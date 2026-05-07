@@ -20,20 +20,20 @@ recommend using the Flatpak package.
 
 ### Cluster Management
 
-- **Auto-discovery** — automatically detects kubeconfig files at `~/.kube/config` and any paths in `$KUBECONFIG`
-- **Multiple clusters** — connect to and switch between multiple clusters from the welcome screen
-- **Manual configuration** — configure clusters by host URL, bearer token, TLS certificates, or exec-based auth
-- **Bootstrap new clusters** — install a fresh **k3s** cluster on remote SSH-reachable nodes through a guided wizard. Detects distro/package manager/firewall, generates an editable plan of every shell command that will run, streams live logs per node, and registers the resulting cluster in Orchestrator preferences on success.
-- **Read-only mode** — optionally prevent any write operations against a cluster
-- **Keyboard shortcuts** — `Ctrl+N` opens a new window, `Ctrl+Q` disconnects from the current cluster
+- **Auto-discovery**: automatically detects kubeconfig files at `~/.kube/config` and any paths in `$KUBECONFIG`
+- **Multiple clusters**: connect to and switch between multiple clusters from the welcome screen
+- **Manual configuration**: configure clusters by host URL, bearer token, TLS certificates, or exec-based auth
+- **Bootstrap new clusters**: install a fresh **k3s** cluster on remote SSH-reachable nodes through a guided wizard. Detects distro/package manager/firewall, generates an editable plan of every shell command that will run, streams live logs per node, and registers the resulting cluster in Orchestrator preferences on success.
+- **Read-only mode**: optionally prevent any write operations against a cluster
+- **Keyboard shortcuts**: `Ctrl+N` opens a new window, `Ctrl+Q` disconnects from the current cluster
 
 ### Resource Browser
 
-- **Full API coverage** — browse every resource type the cluster API exposes, including CRDs
-- **Favourites** — pin frequently-used resource types to the sidebar for quick access (defaults: Pods, ConfigMaps, Secrets, PVCs, Deployments, StatefulSets, Services, Ingresses, Namespaces, Nodes)
-- **Pinned objects** — pin individual objects to the sidebar to keep them a click away
-- **Namespace filter** — scope the resource list to one or all namespaces
-- **Search** — filter resources by name in real time
+- **Full API coverage**: browse every resource type the cluster API exposes, including CRDs
+- **Favourites**: pin frequently-used resource types to the sidebar for quick access (defaults: Pods, ConfigMaps, Secrets, PVCs, Deployments, StatefulSets, Services, Ingresses, Namespaces, Nodes)
+- **Pinned objects**: pin individual objects to the sidebar to keep them a click away
+- **Namespace filter**: scope the resource list to one or all namespaces
+- **Search**: filter resources by name in real time
 
 ### Resource Details
 
@@ -77,13 +77,13 @@ Clicking any resource opens a detail panel with rich, resource-specific properti
 
 ### Preferences
 
-- **Color scheme** — choose Default, Light, or Dark
-- **Cluster settings** — add, remove, or reconfigure clusters at any time
+- **Color scheme**: choose Default, Light, or Dark
+- **Cluster settings**: add, remove, or reconfigure clusters at any time
 - Preferences are saved automatically to `$XDG_CONFIG_HOME/orchestrator/prefs.json`
 
 ### Other
 
-- Update notifications — a toast appears when a new release is available
+- Update notifications: a toast appears when a new release is available
 - Crash/panic window catches unhandled errors and displays them gracefully
 
 ## Setup

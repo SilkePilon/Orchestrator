@@ -1,4 +1,4 @@
-# Manual test matrix — k3s bootstrap wizard
+# Manual test matrix: k3s bootstrap wizard
 
 The unit tests in this package cover plan generation, kubeconfig
 rewriting, and probe parsing. End-to-end coverage of the SSH transport
@@ -13,19 +13,19 @@ a release.
 | Debian 12       | apt         | nftables   | verify nft ruleset is appended        |
 | Fedora 41       | dnf         | firewalld  | verify `firewall-cmd --reload` runs   |
 | Alpine 3.20     | apk         | iptables   | OpenRC service install                |
-| Rocky/Alma 9    | dnf         | firewalld  | SELinux enforcing — must succeed      |
+| Rocky/Alma 9    | dnf         | firewalld  | SELinux enforcing; must succeed       |
 
 Each target should be tested in two scenarios:
 
-1. **Clean** — fresh OS, nothing installed besides openssh-server.
-2. **Dirty** — node already has docker (or k3s of a different version)
+1. **Clean**: fresh OS, nothing installed besides openssh-server.
+2. **Dirty**: node already has docker (or k3s of a different version)
    installed; the wizard should detect and surface this in the probe
    page and skip / rewrite the relevant install steps.
 
 ## Topologies
 
-- **Single server** — one node, role=server. Fastest smoke test.
-- **Server + 2 agents** — exercise token plumbing and node-readiness wait.
+- **Single server**: one node, role=server. Fastest smoke test.
+- **Server + 2 agents**: exercise token plumbing and node-readiness wait.
 
 ## Per-run checklist
 
@@ -51,11 +51,11 @@ Each target should be tested in two scenarios:
 
 ## Failure modes to verify
 
-- **Wrong SSH password** — Test connection on Nodes page surfaces an
+- **Wrong SSH password**: Test connection on Nodes page surfaces an
   inline error; wizard cannot advance.
-- **Host key mismatch** — second run after node reinstall hard-fails
+- **Host key mismatch**: second run after node reinstall hard-fails
   with a clear dialog (does not silently accept).
-- **k3s install network failure** — Apply page shows the failed step
+- **k3s install network failure**: Apply page shows the failed step
   with stderr tail; Retry / Edit & Retry / Skip / Abort options work.
-- **Abort mid-install** — "Cancel" closes SSH sessions; partial
+- **Abort mid-install**: "Cancel" closes SSH sessions; partial
   install is left as-is (uninstall is best-effort).

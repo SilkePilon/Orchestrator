@@ -24,7 +24,7 @@ func (w *Wizard) intro() *adw.NavigationPage {
 
 	general := adw.NewPreferencesGroup()
 	general.SetTitle("Cluster")
-	general.SetDescription("High-level shape of the new k3s cluster. Every command the wizard runs on your nodes will be shown — and editable — before it executes.")
+	general.SetDescription("High-level shape of the new k3s cluster. Every command the wizard runs on your nodes will be shown and editable before it executes.")
 	page.Add(general)
 
 	d := w.draft.Value()

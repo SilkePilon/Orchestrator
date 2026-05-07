@@ -78,7 +78,7 @@ func (e *Executor) Run(ctx context.Context) error {
 		client, ok := e.clients[nodeID]
 		if !ok {
 			e.emit(Event{NodeID: nodeID, Kind: "log",
-				Line: "no SSH client for this node — skipping"})
+				Line: "no SSH client for this node, so it will be skipped"})
 			continue
 		}
 		steps := e.plan.NodeSteps[nodeID]

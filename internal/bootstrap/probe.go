@@ -112,21 +112,21 @@ func classifyProbe(p *NodeProbe) {
 	}
 	if p.FreeDiskMB > 0 && p.FreeDiskMB < 2048 {
 		p.Warnings = append(p.Warnings,
-			fmt.Sprintf("low free disk on /var/lib (%d MB) — k3s recommends ≥2 GB", p.FreeDiskMB))
+			fmt.Sprintf("low free disk on /var/lib (%d MB); k3s recommends ≥2 GB", p.FreeDiskMB))
 	}
 	if p.FreeMemoryMB > 0 && p.FreeMemoryMB < 512 {
 		p.Warnings = append(p.Warnings,
-			fmt.Sprintf("low free memory (%d MB) — k3s recommends ≥512 MB", p.FreeMemoryMB))
+			fmt.Sprintf("low free memory (%d MB); k3s recommends ≥512 MB", p.FreeMemoryMB))
 	}
 	if p.SwapEnabled {
-		p.Warnings = append(p.Warnings, "swap is enabled — k3s will run with swap; the plan will disable it")
+		p.Warnings = append(p.Warnings, "swap is enabled; k3s will run with swap, and the plan will disable it")
 	}
 	if !p.CgroupV2 {
-		p.Warnings = append(p.Warnings, "cgroup v2 not detected — k3s may still work but this is unusual on modern distros")
+		p.Warnings = append(p.Warnings, "cgroup v2 not detected; k3s may still work, but this is unusual on modern distros")
 	}
 	if p.HasK3s {
 		p.Warnings = append(p.Warnings,
-			fmt.Sprintf("k3s is already installed (%s) — it will be reconfigured / upgraded", p.K3sVersion))
+			fmt.Sprintf("k3s is already installed (%s); it will be reconfigured / upgraded", p.K3sVersion))
 	}
 	if p.HasDocker && !p.HasContainerd {
 		p.Warnings = append(p.Warnings, "Docker is installed; k3s ships its own containerd and will not use Docker")
