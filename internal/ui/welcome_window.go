@@ -17,8 +17,10 @@ import (
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/getseabird/seabird/api"
+	core "github.com/getseabird/seabird/internal/bootstrap"
 	"github.com/getseabird/seabird/internal/ctxt"
 	"github.com/getseabird/seabird/internal/pubsub"
+	"github.com/getseabird/seabird/internal/ui/bootstrap"
 	"github.com/getseabird/seabird/internal/ui/common"
 	"github.com/getseabird/seabird/widget"
 	"k8s.io/klog/v2"
@@ -97,12 +99,24 @@ func (w *WelcomeWindow) createContent(first bool) *adw.NavigationView {
 		add := gtk.NewButton()
 		add.AddCSSClass("flat")
 		add.SetIconName("plus-symbolic")
+		add.SetTooltipText("Connect existing cluster")
 		add.ConnectClicked(func() {
 			pref := NewClusterPrefPage(w.ctx, w.State, pubsub.NewProperty(api.ClusterPreferences{}))
 			w.nav.Push(pref.NavigationPage)
 		})
 
-		group.SetHeaderSuffix(add)
+		create := gtk.NewButton()
+		create.AddCSSClass("flat")
+		create.SetIconName("computer-symbolic")
+		create.SetTooltipText("Create new cluster on remote nodes")
+		create.ConnectClicked(func() {
+			w.nav.Push(bootstrap.NewWizard(w.ctx, w.State, w.bootstrapFinishHandler).NavigationPage)
+		})
+
+		suffix := gtk.NewBox(gtk.OrientationHorizontal, 6)
+		suffix.Append(create)
+		suffix.Append(add)
+		group.SetHeaderSuffix(suffix)
 
 		for i, c := range w.Preferences.Value().Clusters {
 			cluster := c
@@ -147,18 +161,31 @@ func (w *WelcomeWindow) createContent(first bool) *adw.NavigationView {
 	} else {
 		status := adw.NewStatusPage()
 		status.SetIconName("seabird")
-		status.SetTitle("No Clusters Found")
-		status.SetDescription("Connect to a cluster to get started.")
-		btn := gtk.NewButton()
-		btn.ConnectClicked(func() {
+		status.SetTitle("Welcome to Seabird")
+		status.SetDescription("Connect an existing Kubernetes cluster, or create a new one.")
+
+		connect := gtk.NewButtonWithLabel("Connect Cluster")
+		connect.SetHAlign(gtk.AlignCenter)
+		connect.AddCSSClass("pill")
+		connect.AddCSSClass("suggested-action")
+		connect.ConnectClicked(func() {
 			pref := NewClusterPrefPage(w.ctx, w.State, pubsub.NewProperty(api.ClusterPreferences{}))
 			w.nav.Push(pref.NavigationPage)
 		})
-		btn.SetHAlign(gtk.AlignCenter)
-		btn.SetLabel("New Cluster")
-		btn.AddCSSClass("pill")
-		btn.AddCSSClass("suggested-action")
-		status.SetChild(btn)
+
+		create := gtk.NewButtonWithLabel("Create New Cluster")
+		create.SetHAlign(gtk.AlignCenter)
+		create.AddCSSClass("pill")
+		create.ConnectClicked(func() {
+			w.nav.Push(bootstrap.NewWizard(w.ctx, w.State, w.bootstrapFinishHandler).NavigationPage)
+		})
+
+		actions := gtk.NewBox(gtk.OrientationVertical, 12)
+		actions.SetHAlign(gtk.AlignCenter)
+		actions.Append(connect)
+		actions.Append(create)
+
+		status.SetChild(actions)
 		box.Append(status)
 	}
 
@@ -255,6 +282,52 @@ func (w *WelcomeWindow) createPurchasePage() *adw.NavigationPage {
 	group.Add(entry)
 
 	return navPage
+}
+
+func (w *WelcomeWindow) bootstrapFinishHandler(ctx context.Context, draft *core.BootstrapDraft, kubeconfigYAML string) {
+	server := draft.Server()
+	if server == nil {
+		widget.ShowErrorDialog(ctx, "Bootstrap finish", fmt.Errorf("no server node in draft"))
+		return
+	}
+	cfg, err := core.RewriteKubeconfig([]byte(kubeconfigYAML), server.Host, draft.Options.ClusterName)
+	if err != nil {
+		widget.ShowErrorDialog(ctx, "Could not parse kubeconfig", err)
+		return
+	}
+	rec := &api.BootstrapRecord{
+		Distribution: "k3s",
+		Channel:      draft.Options.Channel,
+		Version:      draft.Options.Version,
+		ServerHost:   server.Host,
+		CreatedAt:    time.Now(),
+	}
+	for _, a := range draft.Agents() {
+		rec.AgentHosts = append(rec.AgentHosts, a.Host)
+	}
+	cluster, err := api.ClusterPreferencesFromKubeconfig(draft.Options.ClusterName, cfg, rec)
+	if err != nil {
+		widget.ShowErrorDialog(ctx, "Could not build cluster preferences", err)
+		return
+	}
+
+	prop := pubsub.NewProperty(cluster)
+	prefs := w.Preferences.Value()
+	prefs.Clusters = append(prefs.Clusters, prop)
+	w.Preferences.Pub(prefs)
+
+	go func() {
+		state, err := w.NewClusterState(w.ctx, prop)
+		glib.IdleAdd(func() {
+			if err != nil {
+				widget.ShowErrorDialog(w.ctx, "Cluster connection failed", err)
+				return
+			}
+			app := w.Application()
+			w.Close()
+			NewClusterWindow(w.ctx, app, state).Present()
+		})
+	}()
 }
 
 func (w *WelcomeWindow) showUpdateNotification() {

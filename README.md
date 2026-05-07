@@ -25,6 +25,7 @@ recommend using the Flatpak package.
 - **Auto-discovery** — automatically detects kubeconfig files at `~/.kube/config` and any paths in `$KUBECONFIG`
 - **Multiple clusters** — connect to and switch between multiple clusters from the welcome screen
 - **Manual configuration** — configure clusters by host URL, bearer token, TLS certificates, or exec-based auth
+- **Bootstrap new clusters** — install a fresh **k3s** cluster on remote SSH-reachable nodes through a guided wizard. Detects distro/package manager/firewall, generates an editable plan of every shell command that will run, streams live logs per node, and registers the resulting cluster in Seabird preferences on success.
 - **Read-only mode** — optionally prevent any write operations against a cluster
 - **Keyboard shortcuts** — `Ctrl+N` opens a new window, `Ctrl+Q` disconnects from the current cluster
 

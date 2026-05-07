@@ -57,6 +57,59 @@ type ClusterPreferences struct {
 		Favourites []schema.GroupVersionResource
 		Pins       []corev1.ObjectReference
 	}
+	// Bootstrap, when non-nil, indicates this cluster was created by the
+	// Seabird k3s bootstrap wizard. It is purely informational; the
+	// connection details live in Host/TLS/BearerToken.
+	Bootstrap *BootstrapRecord `json:",omitempty"`
+}
+
+// BootstrapRecord is metadata about a cluster Seabird bootstrapped itself.
+// It is rendered on the cluster card so the user can see at a glance how
+// the cluster was created and which nodes it spans.
+type BootstrapRecord struct {
+	Distribution string    // always "k3s" in v1
+	Version      string    // resolved k3s version
+	Channel      string    // user-selected channel (stable/latest/...)
+	ServerHost   string    // public host of the server node
+	AgentHosts   []string  // public hosts of any agent nodes
+	CreatedAt    time.Time
+}
+
+// ClusterPreferencesFromKubeconfig builds a self-contained
+// ClusterPreferences (no Kubeconfig pointer; everything embedded) from
+// a parsed kubeconfig produced by bootstrap.RewriteKubeconfig. The
+// resulting cluster survives even if the user never writes the
+// kubeconfig out to disk.
+func ClusterPreferencesFromKubeconfig(name string, cfg *api.Config, rec *BootstrapRecord) (ClusterPreferences, error) {
+	if cfg == nil {
+		return ClusterPreferences{}, errors.New("nil kubeconfig")
+	}
+	ctxName := cfg.CurrentContext
+	ctx, ok := cfg.Contexts[ctxName]
+	if !ok {
+		return ClusterPreferences{}, errors.New("kubeconfig has no current-context")
+	}
+	cluster, ok := cfg.Clusters[ctx.Cluster]
+	if !ok {
+		return ClusterPreferences{}, errors.New("kubeconfig current-context references missing cluster")
+	}
+	user, ok := cfg.AuthInfos[ctx.AuthInfo]
+	if !ok {
+		return ClusterPreferences{}, errors.New("kubeconfig current-context references missing user")
+	}
+
+	prefs := ClusterPreferences{
+		Name:      name,
+		Host:      cluster.Server,
+		Bootstrap: rec,
+	}
+	prefs.TLS.CAData = cluster.CertificateAuthorityData
+	prefs.TLS.CertData = user.ClientCertificateData
+	prefs.TLS.KeyData = user.ClientKeyData
+	prefs.BearerToken = user.Token
+	prefs.SkipTlsVerification = cluster.InsecureSkipTLSVerify
+	prefs.Defaults()
+	return prefs, nil
 }
 
 type Kubeconfig struct {
