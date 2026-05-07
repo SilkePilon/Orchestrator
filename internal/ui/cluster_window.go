@@ -117,6 +117,7 @@ func NewClusterWindow(ctx context.Context, app *gtk.Application, state *common.C
 
 	w.listView = list.NewList(ctx, w.ClusterState, w.dialog, editor)
 	viewStack.AddChild(w.listView).SetName("list")
+	viewStack.AddChild(NewHealthOverviewView(ctx, w.ClusterState)).SetName("health")
 	viewStack.AddChild(NewBenchmarkView(ctx, w.ClusterState)).SetName("benchmark")
 	viewStack.SetVisibleChild(w.listView)
 	paned.SetEndChild(viewStack)

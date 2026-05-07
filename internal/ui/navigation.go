@@ -245,11 +245,11 @@ func (n *Navigation) createResourceList(prefs api.ClusterPreferences) *gtk.ListB
 		if row == nil {
 			return
 		}
-		if row.Name() == "benchmark" {
+		if row.Name() == "health" || row.Name() == "benchmark" {
 			pages := n.viewStack.Pages()
 			for i := 0; i < int(pages.NItems()); i++ {
 				page := pages.Item(uint(i)).Cast().(*gtk.StackPage)
-				if page.Name() == "benchmark" {
+				if page.Name() == row.Name() {
 					n.viewStack.SetVisibleChild(page.Child())
 					return
 				}
@@ -328,6 +328,7 @@ func (n *Navigation) createResourceList(prefs api.ClusterPreferences) *gtk.ListB
 
 	thematic := n.createHeaderRow("Tools")
 	n.resourceList.Append(thematic)
+	n.resourceList.Append(n.createToolRow("health", "Health", "Cluster status, workload issues, and warning events", "heart-outline-thick-symbolic"))
 	n.resourceList.Append(n.createToolRow("benchmark", "Benchmark", "Cluster performance and node resource results", "speedometer-symbolic"))
 
 	if len(n.resources) > 0 {
