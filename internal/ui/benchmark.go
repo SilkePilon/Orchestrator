@@ -7,7 +7,9 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -354,6 +356,11 @@ func (v *BenchmarkView) run() {
 
 	go func() {
 		result, err := v.collectBenchmark(target, options, report)
+		history, historyErr := v.loadBenchmarkHistory()
+		saveErr := error(nil)
+		if err == nil {
+			saveErr = v.saveBenchmarkHistory(result)
+		}
 		glib.IdleAdd(func() {
 			v.runButton.SetSensitive(true)
 			if err != nil {
@@ -368,6 +375,12 @@ func (v *BenchmarkView) run() {
 			v.progress.SetFraction(1)
 			v.progress.SetText("Done")
 			v.renderResult(result)
+			if historyErr == nil {
+				v.renderBenchmarkHistory(result, history)
+			}
+			if saveErr != nil {
+				widget.ShowErrorDialog(v.ctx, "Could not save benchmark history", saveErr)
+			}
 		})
 	}()
 }
@@ -913,6 +926,72 @@ func benchmarkStepTotal(options benchmarkOptions, nodeCount int) int {
 	return max(total, 1)
 }
 
+func (v *BenchmarkView) loadBenchmarkHistory() ([]benchmarkResult, error) {
+	dir, err := benchmarkHistoryDir(v.ClusterPreferences.Value().Name)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var history []benchmarkResult
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var result benchmarkResult
+		if err := json.Unmarshal(data, &result); err != nil {
+			continue
+		}
+		history = append(history, result)
+	}
+	sort.Slice(history, func(i, j int) bool { return history[i].FinishedAt.After(history[j].FinishedAt) })
+	return history, nil
+}
+
+func (v *BenchmarkView) saveBenchmarkHistory(result *benchmarkResult) error {
+	dir, err := benchmarkHistoryDir(v.ClusterPreferences.Value().Name)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return err
+	}
+	name := fmt.Sprintf("%s-%s.json", result.FinishedAt.Format("20060102-150405"), benchmarkSafeName(result.Target))
+	return os.WriteFile(filepath.Join(dir, name), data, 0o600)
+}
+
+func benchmarkHistoryDir(cluster string) (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(configDir, "seabird", "benchmarks", benchmarkSafeName(cluster)), nil
+}
+
+func benchmarkSafeName(value string) string {
+	name := strings.ToLower(value)
+	name = benchmarkNameRe.ReplaceAllString(name, "-")
+	name = strings.Trim(name, "-")
+	if name == "" {
+		return "default"
+	}
+	return name
+}
+
 func setNetworkError(results []benchmarkNodeResult, message string) {
 	for i := range results {
 		results[i].NetworkBenchmark = &benchmarkNetworkResult{Image: benchmarkImage, Error: message}
@@ -1162,6 +1241,78 @@ func (v *BenchmarkView) renderResult(result *benchmarkResult) {
 		}
 		v.results.Append(card)
 	}
+}
+
+func (v *BenchmarkView) renderBenchmarkHistory(current *benchmarkResult, history []benchmarkResult) {
+	historyCard := benchmarkCard()
+	historyCard.Append(sectionLabel("Benchmark History"))
+	if len(history) == 0 {
+		historyCard.Append(textRow("Previous runs", "No previous benchmark runs saved for this cluster."))
+		v.results.Append(historyCard)
+		return
+	}
+
+	previous := firstComparableBenchmark(current, history)
+	if previous != nil {
+		compareCard := benchmarkCard()
+		compareCard.Append(sectionLabel("Compared With Previous Run"))
+		compareCard.Append(textRow("Previous run", previous.FinishedAt.Format("Jan 2 15:04:05")))
+		appendBenchmarkComparisons(compareCard, current, previous)
+		v.results.Append(compareCard)
+	}
+
+	limit := min(len(history), 5)
+	for i := 0; i < limit; i++ {
+		run := history[i]
+		historyCard.Append(textRow(run.FinishedAt.Format("Jan 2 15:04:05"), fmt.Sprintf("%s · %d nodes", run.Target, len(run.Nodes))))
+	}
+	v.results.Append(historyCard)
+}
+
+func firstComparableBenchmark(current *benchmarkResult, history []benchmarkResult) *benchmarkResult {
+	for i := range history {
+		if history[i].Cluster == current.Cluster && history[i].Target == current.Target && history[i].FinishedAt.Before(current.FinishedAt) {
+			return &history[i]
+		}
+	}
+	return nil
+}
+
+func appendBenchmarkComparisons(card *gtk.Box, current, previous *benchmarkResult) {
+	previousNodes := map[string]benchmarkNodeResult{}
+	for _, node := range previous.Nodes {
+		previousNodes[node.Name] = node
+	}
+	rows := 0
+	for _, node := range current.Nodes {
+		previousNode, ok := previousNodes[node.Name]
+		if !ok {
+			continue
+		}
+		if node.CPUBenchmark != nil && previousNode.CPUBenchmark != nil && node.CPUBenchmark.Error == "" && previousNode.CPUBenchmark.Error == "" {
+			card.Append(textRow(node.Name+" CPU", benchmarkDelta(node.CPUBenchmark.EventsPerSecond, previousNode.CPUBenchmark.EventsPerSecond, "events/s")))
+			rows++
+		}
+		if node.MemoryBenchmark != nil && previousNode.MemoryBenchmark != nil && node.MemoryBenchmark.Error == "" && previousNode.MemoryBenchmark.Error == "" {
+			card.Append(textRow(node.Name+" memory", benchmarkDelta(node.MemoryBenchmark.MiBPerSecond, previousNode.MemoryBenchmark.MiBPerSecond, "MiB/s")))
+			rows++
+		}
+		if node.NetworkBenchmark != nil && previousNode.NetworkBenchmark != nil && node.NetworkBenchmark.Error == "" && previousNode.NetworkBenchmark.Error == "" && node.NetworkBenchmark.Role != "server" {
+			card.Append(textRow(node.Name+" network", benchmarkDelta(node.NetworkBenchmark.MbitsPerSecond, previousNode.NetworkBenchmark.MbitsPerSecond, "Mbit/s")))
+			rows++
+		}
+	}
+	if rows == 0 {
+		card.Append(textRow("Comparable metrics", "No matching benchmark metrics were available to compare."))
+	}
+}
+
+func benchmarkDelta(current, previous float64, unit string) string {
+	if previous == 0 {
+		return fmt.Sprintf("%.1f %s", current, unit)
+	}
+	change := ((current - previous) / previous) * 100
+	return fmt.Sprintf("%.1f %s vs %.1f %s (%+.1f%%)", current, unit, previous, unit, change)
 }
 
 func benchmarkCard() *gtk.Box {
