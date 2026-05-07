@@ -2,8 +2,6 @@ app-id: dev.silkepilon.Orchestrator
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.golang
 command: orchestrator
 
 finish-args:
@@ -19,6 +17,7 @@ finish-args:
 
 cleanup:
   - /include
+  - /lib/sdk
   - /lib/pkgconfig
   - /share/pkgconfig
   - /share/aclocal
@@ -28,12 +27,51 @@ cleanup:
   - '*.la'
 
 modules:
+  - name: golang
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/sdk/golang
+      - cp -a . /app/lib/sdk/golang
+    sources:
+      - type: archive
+        url: https://go.dev/dl/go1.26.2.linux-amd64.tar.gz
+        sha256: 990e6b4bbba816dc3ee129eaeaf4b42f17c2800b88a2166c265ac1a200262282
+        strip-components: 1
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://go.dev/dl/go1.26.2.linux-arm64.tar.gz
+        sha256: c958a1fe1b361391db163a485e21f5f228142d6f8b584f6bef89b26f66dc5b23
+        strip-components: 1
+        only-arches:
+          - aarch64
+
+  - name: vte
+    buildsystem: meson
+    config-opts:
+      - -Dgtk3=false
+      - -Dgtk4=true
+      - -Dvapi=false
+      - -Ddocs=false
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/applications/org.gnome.Vte.App.Gtk4.desktop
+      - /share/gir-1.0
+      - /share/vala
+      - /share/xdg-terminals
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/vte/0.82/vte-0.82.3.tar.xz
+        sha256: 6dc6278f6fee30d07d1a03e2ba3335b1ea4e8d2956ceb59d861943115d930a85
+
   - name: orchestrator
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/golang/bin
+      append-path: /app/lib/sdk/golang/bin
       env:
-        GOROOT: /usr/lib/sdk/golang
+        GOROOT: /app/lib/sdk/golang
         GOPATH: /run/build/orchestrator/go
         GOMODCACHE: /run/build/orchestrator/go/pkg/mod
         GOPROXY: file:///run/build/orchestrator/go/pkg/mod/cache/download

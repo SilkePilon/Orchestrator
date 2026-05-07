@@ -1,4 +1,5 @@
 APP_ID = dev.silkepilon.Orchestrator
+FLATPAK_BUILDER_FLAGS ?= --disable-rofiles-fuse
 FLATPAK_MANIFEST = $(APP_ID).yml
 SEMVER = go run github.com/maykonlsf/semver-cli/cmd/semver@latest
 
@@ -34,11 +35,11 @@ flatpak-validate:
 
 .PHONY: flatpak-build
 flatpak-build: flatpak-validate
-	flatpak-builder --force-clean build-flatpak $(FLATPAK_MANIFEST)
+	flatpak-builder $(FLATPAK_BUILDER_FLAGS) --force-clean build-flatpak $(FLATPAK_MANIFEST)
 
 .PHONY: flatpak-install
 flatpak-install: flatpak-validate
-	flatpak-builder --user --install --force-clean build-flatpak $(FLATPAK_MANIFEST)
+	flatpak-builder $(FLATPAK_BUILDER_FLAGS) --user --install --force-clean build-flatpak $(FLATPAK_MANIFEST)
 
 .PHONY: flatpak-run
 flatpak-run:
