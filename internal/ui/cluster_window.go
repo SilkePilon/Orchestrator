@@ -157,7 +157,7 @@ func (w *ClusterWindow) createActions() {
 
 	action = gio.NewSimpleAction("about", nil)
 	action.ConnectActivate(func(_ *glib.Variant) {
-		NewAboutWindow(&w.Window).Present()
+		NewAboutWindow().Present(&w.Window)
 	})
 	w.AddAction(action)
 

@@ -8,9 +8,10 @@ import (
 	"github.com/getseabird/seabird/internal/ctxt"
 )
 
-func ShowErrorDialog(ctx context.Context, title string, err error) *adw.MessageDialog {
-	dialog := adw.NewMessageDialog(ctxt.MustFrom[*gtk.Window](ctx), title, err.Error())
-	dialog.AddResponse("Ok", "Ok")
-	dialog.Present()
+func ShowErrorDialog(ctx context.Context, title string, err error) *adw.AlertDialog {
+	parent := ctxt.MustFrom[*gtk.Window](ctx)
+	dialog := adw.NewAlertDialog(title, err.Error())
+	dialog.AddResponse("ok", "Ok")
+	dialog.Present(parent)
 	return dialog
 }

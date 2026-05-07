@@ -79,7 +79,7 @@ func (w *WelcomeWindow) createContent(first bool) *adw.NavigationView {
 	box := gtk.NewBox(gtk.OrientationVertical, 0)
 	w.nav.Add(adw.NewNavigationPage(box, ApplicationName))
 
-	header := gtk.NewHeaderBar()
+	header := adw.NewHeaderBar()
 	box.Append(header)
 
 	page := adw.NewPreferencesPage()

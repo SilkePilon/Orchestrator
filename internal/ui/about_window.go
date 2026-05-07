@@ -8,15 +8,14 @@ import (
 var Version string = "dev"
 
 type AboutWindow struct {
-	*adw.AboutWindow
+	*adw.AboutDialog
 }
 
-func NewAboutWindow(parent *gtk.Window) *AboutWindow {
-	w := AboutWindow{adw.NewAboutWindow()}
+func NewAboutWindow() *AboutWindow {
+	w := AboutWindow{adw.NewAboutDialog()}
 	w.SetApplicationIcon("seabird")
 	w.SetApplicationName(ApplicationName)
 	w.SetVersion(Version)
-	w.SetTransientFor(parent)
 	w.SetWebsite("https://github.com/getseabird/seabird")
 	w.SetIssueURL("https://github.com/getseabird/seabird/issues")
 	w.SetSupportURL("https://github.com/getseabird/seabird/discussions")

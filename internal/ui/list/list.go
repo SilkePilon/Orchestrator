@@ -136,10 +136,15 @@ func (l *List) onSearchFilterChange(filter common.SearchFilter) {
 }
 
 func (l *List) createColumns() []*gtk.ColumnViewColumn {
+	resource := l.SelectedResource.Value()
+	if resource == nil {
+		return nil
+	}
+
 	var columns []api.Column
 
 	for _, e := range l.Extensions {
-		columns = e.CreateColumns(l.ctx, l.SelectedResource.Value(), columns)
+		columns = e.CreateColumns(l.ctx, resource, columns)
 	}
 	sort.Slice(columns, func(i, j int) bool {
 		return columns[i].Priority > columns[j].Priority
@@ -148,7 +153,7 @@ func (l *List) createColumns() []*gtk.ColumnViewColumn {
 	var gtkColumns []*gtk.ColumnViewColumn
 	for _, col := range columns {
 		factory := gtk.NewSignalListItemFactory()
-		gvk := util.GVKForResource(l.SelectedResource.Value()).String()
+		gvk := util.GVKForResource(resource).String()
 		factory.ConnectBind(func(c *coreglib.Object) {
 			cell := c.Cast().(*gtk.ColumnViewCell)
 			object := gioutil.ObjectValue[client.Object](cell.Item())

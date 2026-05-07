@@ -54,8 +54,13 @@ func NewSingleView(ctx context.Context, state *common.ClusterState, editor *edit
 	}
 	view.SetTag(uuid.NewString())
 
-	clamp := view.prefPage.FirstChild().(*gtk.ScrolledWindow).FirstChild().(*gtk.Viewport).FirstChild().(*adw.Clamp)
-	clamp.SetMaximumSize(5000)
+	if sw, ok := view.prefPage.FirstChild().(*gtk.ScrolledWindow); ok {
+		if vp, ok := sw.FirstChild().(*gtk.Viewport); ok {
+			if clamp, ok := vp.FirstChild().(*adw.Clamp); ok {
+				clamp.SetMaximumSize(5000)
+			}
+		}
+	}
 
 	header := adw.NewHeaderBar()
 	header.AddCSSClass("flat")

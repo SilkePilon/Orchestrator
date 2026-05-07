@@ -22,18 +22,17 @@ func showClusterPrefsErrorDialog(ctx context.Context, prefs api.ClusterPreferenc
 	if ex := prefs.Exec; ex != nil {
 		if _, err := exec.LookPath(ex.Command); err != nil {
 			w, _ := ctxt.From[*gtk.Window](ctx)
-			dialog := adw.NewMessageDialog(w, "Credential plugin not found", err.Error())
+			dialog := adw.NewAlertDialog("Credential plugin not found", err.Error())
 			dialog.AddResponse("cancel", "Cancel")
 			dialog.AddResponse("docs", "Open documentation")
 			dialog.SetResponseAppearance("docs", adw.ResponseSuggested)
 			dialog.ConnectResponse(func(response string) {
 				switch response {
 				case "docs":
-					// gtk.NewURILauncher("https://getseabird.github.io/docs/credential-plugins/").Launch()
 					gtk.ShowURI(w, "https://getseabird.github.io/docs/credential-plugins/", gdk.CURRENT_TIME)
 				}
 			})
-			dialog.Present()
+			dialog.Present(w)
 			return true
 		}
 	}

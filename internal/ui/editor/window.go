@@ -155,16 +155,11 @@ func (w *EditorWindow) saveClicked() {
 		return
 	}
 
-	dialog := adw.NewMessageDialog(ctxt.MustFrom[*gtk.Window](w.ctx), fmt.Sprintf("Saving %s", object.GetName()), "The following changes will be made")
+	parent := ctxt.MustFrom[*gtk.Window](w.ctx)
+	dialog := adw.NewAlertDialog(fmt.Sprintf("Saving %s", object.GetName()), "The following changes will be made")
 	dialog.AddResponse("cancel", "Cancel")
 	dialog.AddResponse("save", "Save")
 	dialog.SetResponseAppearance("save", adw.ResponseSuggested)
-	dialog.SetSizeRequest(600, 500)
-	defer dialog.Present()
-
-	box := dialog.Child().(*gtk.WindowHandle).Child().(*gtk.Box).FirstChild().(*gtk.Box)
-
-	box.FirstChild().(*gtk.Label).NextSibling().(*gtk.Label).SetVExpand(false)
 
 	edits := myers.ComputeEdits(span.URIFromPath(object.GetName()), string(prev), text)
 
@@ -181,7 +176,7 @@ func (w *EditorWindow) saveClicked() {
 	sw.SetChild(view)
 	sw.SetVExpand(true)
 
-	box.Append(sw)
+	dialog.SetExtraChild(sw)
 
 	dialog.ConnectResponse(func(response string) {
 		switch response {
@@ -196,4 +191,6 @@ func (w *EditorWindow) saveClicked() {
 			w.toast.AddToast(adw.NewToast("Object updated."))
 		}
 	})
+
+	dialog.Present(parent)
 }

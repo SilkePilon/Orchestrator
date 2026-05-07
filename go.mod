@@ -1,6 +1,6 @@
 module github.com/getseabird/seabird
 
-go 1.22.0
+go 1.23.0
 
 require (
 	github.com/NdoleStudio/lemonsqueezy-go v1.2.4
