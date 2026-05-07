@@ -11,7 +11,7 @@ import (
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	core "github.com/skynomads/orchestrator/internal/bootstrap"
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
 )
 
 // applyPage renders the live execution view: a TabView with one tab per

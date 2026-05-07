@@ -9,10 +9,10 @@ import (
 
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	core "github.com/skynomads/orchestrator/internal/bootstrap"
-	"github.com/skynomads/orchestrator/internal/ctxt"
-	"github.com/skynomads/orchestrator/internal/pubsub"
-	"github.com/skynomads/orchestrator/internal/ui/common"
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
+	"github.com/SilkePilon/Orchestrator/internal/pubsub"
+	"github.com/SilkePilon/Orchestrator/internal/ui/common"
 )
 
 // Wizard is the navigation root of the cluster-bootstrap experience.

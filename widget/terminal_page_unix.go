@@ -14,7 +14,7 @@ import (
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/jgillich/gotk4-vte/pkg/vte/v3"
-	"github.com/skynomads/orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/api"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/kubernetes/scheme"

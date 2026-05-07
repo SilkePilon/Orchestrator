@@ -4,7 +4,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        This template is for comprehensive proposals. If you want to simply suggest a feature, please [create a discussion](https://github.com/skynomads/orchestrator/discussions/categories/ideas).
+        This template is for comprehensive proposals. If you want to simply suggest a feature, please [create a discussion](https://github.com/SilkePilon/Orchestrator/discussions/categories/ideas).
 
   - type: textarea
     attributes:

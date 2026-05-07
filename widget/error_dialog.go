@@ -5,7 +5,7 @@ import (
 
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/skynomads/orchestrator/internal/ctxt"
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
 )
 
 func ShowErrorDialog(ctx context.Context, title string, err error) *adw.AlertDialog {

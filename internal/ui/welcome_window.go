@@ -16,13 +16,13 @@ import (
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/skynomads/orchestrator/api"
-	core "github.com/skynomads/orchestrator/internal/bootstrap"
-	"github.com/skynomads/orchestrator/internal/ctxt"
-	"github.com/skynomads/orchestrator/internal/pubsub"
-	"github.com/skynomads/orchestrator/internal/ui/bootstrap"
-	"github.com/skynomads/orchestrator/internal/ui/common"
-	"github.com/skynomads/orchestrator/widget"
+	"github.com/SilkePilon/Orchestrator/api"
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
+	"github.com/SilkePilon/Orchestrator/internal/pubsub"
+	"github.com/SilkePilon/Orchestrator/internal/ui/bootstrap"
+	"github.com/SilkePilon/Orchestrator/internal/ui/common"
+	"github.com/SilkePilon/Orchestrator/widget"
 	"k8s.io/klog/v2"
 )
 
@@ -415,7 +415,7 @@ func (w *WelcomeWindow) showUpdateNotification() {
 		group := gio.NewSimpleActionGroup()
 		action := gio.NewSimpleAction("releases", nil)
 		action.ConnectActivate(func(idx *glib.Variant) {
-			gtk.ShowURI(&w.Window, "https://github.com/skynomads/orchestrator/releases", gdk.CURRENT_TIME)
+			gtk.ShowURI(&w.Window, "https://github.com/SilkePilon/Orchestrator/releases", gdk.CURRENT_TIME)
 		})
 		group.AddAction(action)
 		w.InsertActionGroup("welcome", group)

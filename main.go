@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/skynomads/orchestrator/internal/ui"
+	"github.com/SilkePilon/Orchestrator/internal/ui"
 
 	"net/http"
 	_ "net/http/pprof"

@@ -16,9 +16,9 @@ func NewAboutWindow() *AboutWindow {
 	w.SetApplicationIcon("orchestrator")
 	w.SetApplicationName(ApplicationName)
 	w.SetVersion(Version)
-	w.SetWebsite("https://github.com/skynomads/orchestrator")
-	w.SetIssueURL("https://github.com/skynomads/orchestrator/issues")
-	w.SetSupportURL("https://github.com/skynomads/orchestrator/discussions")
+	w.SetWebsite("https://github.com/SilkePilon/Orchestrator")
+	w.SetIssueURL("https://github.com/SilkePilon/Orchestrator/issues")
+	w.SetSupportURL("https://github.com/SilkePilon/Orchestrator/discussions")
 	w.SetLicenseType(gtk.LicenseMPL20)
 	return &w
 }

@@ -6,12 +6,12 @@ features such as a terminal for executing commands, monitoring through logs and
 metrics, and a resource editor that conveniently places the API reference at
 your fingertips.
 
-![Screenshot](https://skynomads.github.io/orchestrator/images/screenshot.png)
+![Screenshot](https://silkepilon.github.io/Orchestrator/images/screenshot.png)
 
 ## Download
 
 Downloads for all platforms are available under
-[releases](https://github.com/skynomads/orchestrator/releases). On Linux, we
+[releases](https://github.com/SilkePilon/Orchestrator/releases). On Linux, we
 recommend using the Flatpak package.
 
 [![Download on Flathub](https://flathub.org/api/badge?locale=en)](https://flathub.org/apps/dev.silkepilon.Orchestrator)
@@ -143,15 +143,34 @@ Run directly without installing:
 go run .
 ```
 
+### Flatpak Packaging
+
+The Flathub manifest lives at `dev.silkepilon.Orchestrator.yml`. Validate the
+desktop and AppStream metadata before submitting updates:
+
+```sh
+make flatpak-validate
+```
+
+Build or install the Flatpak locally when `flatpak-builder` is available:
+
+```sh
+make flatpak-build
+make flatpak-install
+```
+
+The manifest tracks Go dependencies in `flatpak-go-sources.json` so the Flathub
+builder can run without network access during the build.
+
 ## Reporting Issues
 
 If you experience problems, please open an
-[issue](https://github.com/skynomads/orchestrator/issues). Try to include as much
+[issue](https://github.com/SilkePilon/Orchestrator/issues). Try to include as much
 information as possible, such as version, operating system and reproduction
 steps.
 
 For feature suggestions, please create a
-[discussion](https://github.com/skynomads/orchestrator/discussions). If you have a
+[discussion](https://github.com/SilkePilon/Orchestrator/discussions). If you have a
 concrete vision for the feature, open an issue instead and use the proposal
 template.
 

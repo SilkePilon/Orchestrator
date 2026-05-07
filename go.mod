@@ -1,4 +1,4 @@
-module github.com/skynomads/orchestrator
+module github.com/SilkePilon/Orchestrator
 
 go 1.26.0
 

@@ -12,8 +12,8 @@ import (
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	core "github.com/skynomads/orchestrator/internal/bootstrap"
-	"github.com/skynomads/orchestrator/widget"
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
+	"github.com/SilkePilon/Orchestrator/widget"
 	"golang.org/x/crypto/ssh"
 )
 

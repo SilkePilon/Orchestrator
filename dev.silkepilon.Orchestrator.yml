@@ -1,0 +1,56 @@
+app-id: dev.silkepilon.Orchestrator
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+command: orchestrator
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=network
+  - --filesystem=xdg-config/kube:ro
+  - --filesystem=~/.kube:ro
+  - --filesystem=~/.ssh:ro
+  - --filesystem=xdg-config/orchestrator:create
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/pkgconfig
+  - /share/aclocal
+  - /man
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: orchestrator
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/golang/bin
+      env:
+        GOROOT: /usr/lib/sdk/golang
+        GOPATH: /run/build/orchestrator/go
+        GOMODCACHE: /run/build/orchestrator/go/pkg/mod
+        GOPROXY: file:///run/build/orchestrator/go/pkg/mod/cache/download
+        GOSUMDB: 'off'
+        CGO_ENABLED: '1'
+    build-commands:
+      - glib-compile-resources --sourcedir=internal/icon --target=internal/icon/icon.gresource internal/icon/gresource.xml
+      - go build -trimpath -mod=mod -ldflags='-s -w -X main.version=0.1.0' -o orchestrator .
+      - install -Dm755 orchestrator /app/bin/orchestrator
+      - install -Dm644 dev.silkepilon.Orchestrator.desktop /app/share/applications/dev.silkepilon.Orchestrator.desktop
+      - install -Dm644 dev.silkepilon.Orchestrator.metainfo.xml /app/share/metainfo/dev.silkepilon.Orchestrator.metainfo.xml
+      - install -Dm644 internal/icon/orchestrator.svg /app/share/icons/hicolor/scalable/apps/dev.silkepilon.Orchestrator.svg
+    sources:
+      - type: git
+        url: https://github.com/SilkePilon/Orchestrator.git
+        tag: 0.1.0
+        x-checker-data:
+          type: git
+          tag-pattern: ^([0-9.]+)$
+      - flatpak-go-sources.json

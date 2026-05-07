@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
-	"github.com/skynomads/orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/api"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -15,7 +15,7 @@ import (
 // 	"time"
 
 // 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
-// 	"github.com/skynomads/orchestrator/api"
+// 	"github.com/SilkePilon/Orchestrator/api"
 // 	corev1 "k8s.io/api/core/v1"
 // 	"k8s.io/klog/v2"
 // 	"nhooyr.io/websocket"

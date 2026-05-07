@@ -3,7 +3,7 @@ Type=Application
 
 Name=Orchestrator
 Comment=Kubernetes desktop client
-Categories=Development;Network;
+Categories=Development;
 Keywords=kubernetes;
 
 Icon=dev.silkepilon.Orchestrator

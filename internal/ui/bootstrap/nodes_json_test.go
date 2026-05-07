@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	core "github.com/skynomads/orchestrator/internal/bootstrap"
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
 )
 
 func TestNodesJSONRoundTripPreservesSensitiveFields(t *testing.T) {

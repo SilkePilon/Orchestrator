@@ -1,7 +1,7 @@
 package api
 
 import (
-	"github.com/skynomads/orchestrator/internal/util"
+	"github.com/SilkePilon/Orchestrator/internal/util"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"

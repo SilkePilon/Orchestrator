@@ -7,7 +7,7 @@ import (
 
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	core "github.com/skynomads/orchestrator/internal/bootstrap"
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
 )
 
 type nodesJSON struct {

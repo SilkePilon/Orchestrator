@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.silkepilon.Orchestrator</id>
+  <name>Orchestrator</name>
+  <summary>Work with Kubernetes</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MPL-2.0</project_license>
+  <description>
+    <p>
+      Orchestrator is a Kubernetes IDE designed for the GNOME desktop. Explore and
+      manage your clusters with a simple and intuitive interface. Equipped with
+      essential features such as a terminal for executing commands, monitoring through
+      logs and metrics, and a resource editor that conveniently places the API
+      reference at your fingertips.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.silkepilon.Orchestrator.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Orchestrator main application window</caption>
+      <image type="source">https://raw.githubusercontent.com/SilkePilon/Orchestrator/main/data/screenshots/main.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Welcome screen for connecting or creating clusters</caption>
+      <image type="source">https://raw.githubusercontent.com/SilkePilon/Orchestrator/main/data/screenshots/welcome.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Cluster probe results before installation</caption>
+      <image type="source">https://raw.githubusercontent.com/SilkePilon/Orchestrator/main/data/screenshots/probe.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Cluster bootstrap progress with live logs</caption>
+      <image type="source">https://raw.githubusercontent.com/SilkePilon/Orchestrator/main/data/screenshots/apply.png</image>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://github.com/SilkePilon/Orchestrator</url>
+  <developer id="dev.silkepilon">
+    <name>Silke Pilon</name>
+  </developer>
+  <branding>
+    <color type="primary" scheme_preference="light">#87a8ee</color>
+    <color type="primary" scheme_preference="dark">#87a8ee</color>
+  </branding>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-05-07">
+      <url>https://github.com/SilkePilon/Orchestrator/releases/tag/0.1.0</url>
+    </release>
+  </releases>
+</component>

@@ -7,10 +7,10 @@ import (
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/skynomads/orchestrator/api"
-	"github.com/skynomads/orchestrator/internal/icon"
-	"github.com/skynomads/orchestrator/internal/style"
-	"github.com/skynomads/orchestrator/internal/ui/common"
+	"github.com/SilkePilon/Orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/internal/icon"
+	"github.com/SilkePilon/Orchestrator/internal/style"
+	"github.com/SilkePilon/Orchestrator/internal/ui/common"
 	"k8s.io/klog/v2"
 )
 

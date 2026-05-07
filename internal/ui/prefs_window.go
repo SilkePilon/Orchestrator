@@ -5,10 +5,10 @@ import (
 
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/skynomads/orchestrator/api"
-	"github.com/skynomads/orchestrator/internal/ctxt"
-	"github.com/skynomads/orchestrator/internal/pubsub"
-	"github.com/skynomads/orchestrator/internal/ui/common"
+	"github.com/SilkePilon/Orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
+	"github.com/SilkePilon/Orchestrator/internal/pubsub"
+	"github.com/SilkePilon/Orchestrator/internal/ui/common"
 )
 
 type PrefsWindow struct {
