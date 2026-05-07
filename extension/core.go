@@ -2,7 +2,10 @@ package extension
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -278,7 +281,7 @@ func (e *Core) CreateColumns(ctx context.Context, res *metav1.APIResource, colum
 	return columns
 }
 
-func (e *Core) CreateObjectProperties(ctx context.Context, _ *metav1.APIResource, object client.Object, props []api.Property) []api.Property {
+func (e *Core) CreateObjectProperties(ctx context.Context, apiResource *metav1.APIResource, object client.Object, props []api.Property) []api.Property {
 	switch object := object.(type) {
 	case *corev1.Pod:
 		var containers []api.Property
@@ -584,7 +587,7 @@ func (e *Core) CreateObjectProperties(ctx context.Context, _ *metav1.APIResource
 		props = append(props, podsProp)
 	}
 
-	return props
+	return append(props, e.resourceDiffProperty(ctx, apiResource, object))
 }
 
 func (e *Core) aggregatedLogsProperty(ctx context.Context, title, namespace string, selector *metav1.LabelSelector) api.Property {
@@ -604,6 +607,163 @@ func (e *Core) aggregatedLogsProperty(ctx context.Context, title, namespace stri
 			group.SetHeaderSuffix(button)
 		},
 	}
+}
+
+func (e *Core) resourceDiffProperty(ctx context.Context, apiResource *metav1.APIResource, object client.Object) api.Property {
+	return &api.GroupProperty{
+		Name: "Resource Diff",
+		Widget: func(w gtk.Widgetter, nav *adw.NavigationView) {
+			group, ok := w.(*adw.PreferencesGroup)
+			if !ok {
+				return
+			}
+			button := gtk.NewButtonWithLabel("Diff")
+			button.AddCSSClass("flat")
+			button.SetTooltipText("Compare this resource with the last local snapshot")
+			button.ConnectClicked(func() {
+				page, err := e.newResourceDiffPage(apiResource, object)
+				if err != nil {
+					widget.ShowErrorDialog(ctx, "Could not open resource diff", err)
+					return
+				}
+				nav.Push(page)
+			})
+			group.SetHeaderSuffix(button)
+		},
+	}
+}
+
+func (e *Core) newResourceDiffPage(apiResource *metav1.APIResource, object client.Object) (*adw.NavigationPage, error) {
+	current, err := resourceSnapshot(object)
+	if err != nil {
+		return nil, err
+	}
+	path, err := e.resourceSnapshotPath(apiResource, object)
+	if err != nil {
+		return nil, err
+	}
+	previous, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, current, 0o600); err != nil {
+		return nil, err
+	}
+
+	box := gtk.NewBox(gtk.OrientationVertical, 0)
+	box.AddCSSClass("view")
+	header := adw.NewHeaderBar()
+	header.SetShowStartTitleButtons(false)
+	header.AddCSSClass("flat")
+	box.Append(header)
+
+	view := gtk.NewTextView()
+	view.SetEditable(false)
+	view.SetCursorVisible(false)
+	view.SetMonospace(true)
+	view.SetWrapMode(gtk.WrapNone)
+	view.Buffer().Insert(view.Buffer().EndIter(), resourceSnapshotDiff(previous, current))
+
+	scroll := gtk.NewScrolledWindow()
+	scroll.SetHExpand(true)
+	scroll.SetVExpand(true)
+	scroll.SetChild(view)
+	box.Append(scroll)
+
+	return adw.NewNavigationPage(box, fmt.Sprintf("Diff %s", object.GetName())), nil
+}
+
+func (e *Core) resourceSnapshotPath(apiResource *metav1.APIResource, object client.Object) (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	cluster := safeResourceSnapshotName(e.ClusterPreferences.Value().Name)
+	resourceName := safeResourceSnapshotName(util.GVRForResource(apiResource).String())
+	objectName := safeResourceSnapshotName(object.GetName())
+	if namespace := object.GetNamespace(); namespace != "" {
+		objectName = safeResourceSnapshotName(namespace) + "-" + objectName
+	}
+	return filepath.Join(configDir, "seabird", "resource-diff", cluster, resourceName, objectName+".json"), nil
+}
+
+func resourceSnapshot(object client.Object) ([]byte, error) {
+	data, err := json.Marshal(object)
+	if err != nil {
+		return nil, err
+	}
+	var snapshot map[string]any
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return nil, err
+	}
+	if metadata, ok := snapshot["metadata"].(map[string]any); ok {
+		delete(metadata, "managedFields")
+		delete(metadata, "resourceVersion")
+		delete(metadata, "uid")
+		delete(metadata, "selfLink")
+	}
+	if strings.EqualFold(fmt.Sprint(snapshot["kind"]), "Secret") {
+		redactStringMap(snapshot, "data")
+		redactStringMap(snapshot, "stringData")
+	}
+	return json.MarshalIndent(snapshot, "", "  ")
+}
+
+func redactStringMap(snapshot map[string]any, key string) {
+	values, ok := snapshot[key].(map[string]any)
+	if !ok {
+		return
+	}
+	for name := range values {
+		values[name] = "<redacted>"
+	}
+}
+
+func resourceSnapshotDiff(previous, current []byte) string {
+	if len(previous) == 0 {
+		return "No previous snapshot was available.\n\nThe current resource snapshot has been saved; open Resource Diff again after the resource changes to compare it.\n\n" + string(current)
+	}
+	if string(previous) == string(current) {
+		return "No resource changes since the last local snapshot.\n\n" + string(current)
+	}
+	previousLines := strings.Split(string(previous), "\n")
+	currentLines := strings.Split(string(current), "\n")
+	var diff strings.Builder
+	diff.WriteString("--- previous snapshot\n+++ current resource\n")
+	lineCount := max(len(previousLines), len(currentLines))
+	for i := 0; i < lineCount; i++ {
+		var before, after string
+		if i < len(previousLines) {
+			before = previousLines[i]
+		}
+		if i < len(currentLines) {
+			after = currentLines[i]
+		}
+		if before == after {
+			diff.WriteString("  " + before + "\n")
+			continue
+		}
+		if i < len(previousLines) {
+			diff.WriteString("- " + before + "\n")
+		}
+		if i < len(currentLines) {
+			diff.WriteString("+ " + after + "\n")
+		}
+	}
+	return diff.String()
+}
+
+func safeResourceSnapshotName(value string) string {
+	value = strings.ToLower(value)
+	return strings.Trim(strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return '-'
+	}, value), "-")
 }
 
 func (e *Core) quickActionColumn(ctx context.Context) api.Column {
