@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/getseabird/seabird/api"
 	"github.com/getseabird/seabird/internal/style"
@@ -272,6 +274,7 @@ func (e *Core) CreateColumns(ctx context.Context, res *metav1.APIResource, colum
 			},
 		)
 	}
+	columns = append(columns, e.quickActionColumn(ctx))
 	return columns
 }
 
@@ -451,13 +454,13 @@ func (e *Core) CreateObjectProperties(ctx context.Context, _ *metav1.APIResource
 			})
 		}
 
-		props = append(props, &api.GroupProperty{Name: "Containers", Children: containers})
+		props = append(props, e.quickActionsProperty(ctx, object), &api.GroupProperty{Name: "Containers", Children: containers})
 	case *appsv1.Deployment:
-		props = append(props, e.aggregatedLogsProperty(ctx, "Deployment Logs", object.Namespace, object.Spec.Selector))
+		props = append(props, e.quickActionsProperty(ctx, object), e.aggregatedLogsProperty(ctx, "Deployment Logs", object.Namespace, object.Spec.Selector))
 	case *appsv1.StatefulSet:
-		props = append(props, e.aggregatedLogsProperty(ctx, "StatefulSet Logs", object.Namespace, object.Spec.Selector))
+		props = append(props, e.quickActionsProperty(ctx, object), e.aggregatedLogsProperty(ctx, "StatefulSet Logs", object.Namespace, object.Spec.Selector))
 	case *appsv1.DaemonSet:
-		props = append(props, e.aggregatedLogsProperty(ctx, "DaemonSet Logs", object.Namespace, object.Spec.Selector))
+		props = append(props, e.quickActionsProperty(ctx, object), e.aggregatedLogsProperty(ctx, "DaemonSet Logs", object.Namespace, object.Spec.Selector))
 	case *corev1.ConfigMap:
 		var data []api.Property
 		for key, value := range object.Data {
@@ -601,4 +604,78 @@ func (e *Core) aggregatedLogsProperty(ctx context.Context, title, namespace stri
 			group.SetHeaderSuffix(button)
 		},
 	}
+}
+
+func (e *Core) quickActionColumn(ctx context.Context) api.Column {
+	return api.Column{
+		Name:     "Actions",
+		Priority: -100,
+		Bind: func(cell api.Cell, object client.Object) {
+			button, ok := e.quickActionButton(ctx, object)
+			if !ok {
+				return
+			}
+			cell.SetChild(button)
+		},
+	}
+}
+
+func (e *Core) quickActionsProperty(ctx context.Context, object client.Object) api.Property {
+	return &api.GroupProperty{
+		Name: "Actions",
+		Widget: func(w gtk.Widgetter, nav *adw.NavigationView) {
+			group, ok := w.(*adw.PreferencesGroup)
+			if !ok {
+				return
+			}
+			if button, ok := e.quickActionButton(ctx, object); ok {
+				group.SetHeaderSuffix(button)
+			}
+		},
+	}
+}
+
+func (e *Core) quickActionButton(ctx context.Context, object client.Object) (*gtk.Button, bool) {
+	switch object.(type) {
+	case *corev1.Pod:
+		button := gtk.NewButtonFromIconName("view-refresh-symbolic")
+		button.SetTooltipText("Delete pod so its controller can recreate it")
+		button.ConnectClicked(func() {
+			e.runQuickAction(ctx, "Could not delete pod", func() error {
+				return e.Delete(ctx, object)
+			})
+		})
+		return button, true
+	case *appsv1.Deployment, *appsv1.StatefulSet, *appsv1.DaemonSet:
+		button := gtk.NewButtonFromIconName("view-refresh-symbolic")
+		button.SetTooltipText("Restart rollout")
+		button.ConnectClicked(func() {
+			e.runQuickAction(ctx, "Could not restart rollout", func() error {
+				return e.restartWorkload(ctx, object)
+			})
+		})
+		return button, true
+	default:
+		return nil, false
+	}
+}
+
+func (e *Core) runQuickAction(ctx context.Context, title string, action func() error) {
+	go func() {
+		if err := action(); err != nil {
+			glib.IdleAdd(func() {
+				widget.ShowErrorDialog(ctx, title, err)
+			})
+		}
+	}()
+}
+
+func (e *Core) restartWorkload(ctx context.Context, object client.Object) error {
+	annotations := object.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+	object.SetAnnotations(annotations)
+	return e.Update(ctx, object)
 }
