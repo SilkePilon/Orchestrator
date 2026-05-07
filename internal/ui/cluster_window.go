@@ -122,6 +122,7 @@ func NewClusterWindow(ctx context.Context, app *gtk.Application, state *common.C
 	viewStack.AddChild(NewBenchmarkView(ctx, w.ClusterState)).SetName("benchmark")
 	viewStack.AddChild(NewRBACViewer(ctx, w.ClusterState)).SetName("rbac")
 	viewStack.AddChild(NewCostWasteView(ctx, w.ClusterState)).SetName("cost")
+	viewStack.AddChild(NewSecurityScanView(ctx, w.ClusterState)).SetName("security")
 	viewStack.SetVisibleChild(w.listView)
 	paned.SetEndChild(viewStack)
 
