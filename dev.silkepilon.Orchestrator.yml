@@ -79,7 +79,7 @@ modules:
         CGO_ENABLED: '1'
     build-commands:
       - glib-compile-resources --sourcedir=internal/icon --target=internal/icon/icon.gresource internal/icon/gresource.xml
-      - go build -trimpath -mod=mod -ldflags='-s -w -X main.version=0.1.0' -o orchestrator .
+      - go build -trimpath -mod=mod -ldflags='-s -w -X main.version=0.1.3' -o orchestrator .
       - install -Dm755 orchestrator /app/bin/orchestrator
       - install -Dm644 dev.silkepilon.Orchestrator.desktop /app/share/applications/dev.silkepilon.Orchestrator.desktop
       - install -Dm644 dev.silkepilon.Orchestrator.metainfo.xml /app/share/metainfo/dev.silkepilon.Orchestrator.metainfo.xml
@@ -88,7 +88,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/SilkePilon/Orchestrator.git
-        tag: 0.1.0
+        tag: 0.1.3
         x-checker-data:
           type: git
           tag-pattern: ^([0-9.]+)$
