@@ -261,6 +261,7 @@ func showDetailsDialog(ctx context.Context, title string, severity int, sections
 	dialog.SetChild(tv)
 	dialog.Present(parent)
 }
+
 // when there is nothing to list. Uses a compact AdwActionRow so it sits well
 // inside a boxed-list page.
 func emptyStatusGroup(group *adw.PreferencesGroup, title, detail, iconName string) {

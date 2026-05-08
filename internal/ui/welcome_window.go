@@ -11,11 +11,6 @@ import (
 	"time"
 
 	"github.com/NdoleStudio/lemonsqueezy-go"
-	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
-	"github.com/diamondburned/gotk4/pkg/gdk/v4"
-	"github.com/diamondburned/gotk4/pkg/gio/v2"
-	"github.com/diamondburned/gotk4/pkg/glib/v2"
-	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/SilkePilon/Orchestrator/api"
 	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
 	"github.com/SilkePilon/Orchestrator/internal/ctxt"
@@ -23,6 +18,11 @@ import (
 	"github.com/SilkePilon/Orchestrator/internal/ui/bootstrap"
 	"github.com/SilkePilon/Orchestrator/internal/ui/common"
 	"github.com/SilkePilon/Orchestrator/widget"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	"github.com/diamondburned/gotk4/pkg/gdk/v4"
+	"github.com/diamondburned/gotk4/pkg/gio/v2"
+	"github.com/diamondburned/gotk4/pkg/glib/v2"
+	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"k8s.io/klog/v2"
 )
 
