@@ -20,15 +20,16 @@
     "**/build/**": true
   },
   "gopls": {
-    "build.directoryFilters": [
-      "-internal/icon/icon-development-kit",
-      "-build"
-    ],
+    "build.directoryFilters": ["-internal/icon/icon-development-kit", "-build"],
     "ui.diagnostic.staticcheck": false,
     "ui.completion.usePlaceholders": false,
-    "ui.semanticTokens": false
+    "ui.semanticTokens": false,
+    "ui.diagnostic.analyses": {
+      "shadow": false,
+      "unusedparams": false
+    }
   },
-  "go.useLanguageServer": true,
+  "go.useLanguageServer": false,
   "go.toolsManagement.autoUpdate": false,
   "go.lintOnSave": "off",
   "go.vetOnSave": "off",

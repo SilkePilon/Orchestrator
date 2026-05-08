@@ -10,10 +10,8 @@ finish-args:
   - --socket=fallback-x11
   - --device=dri
   - --share=network
-  - --filesystem=xdg-config/kube:ro
   - --filesystem=~/.kube:ro
   - --filesystem=~/.ssh:ro
-  - --filesystem=xdg-config/orchestrator:create
 
 cleanup:
   - /include

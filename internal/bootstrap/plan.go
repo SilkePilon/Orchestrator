@@ -221,6 +221,28 @@ func serverJoinHost(srv Node, probe *NodeProbe) string {
 func prepSteps(n Node, opts K3sOptions, p *NodeProbe, role NodeRole) []Step {
 	var s []Step
 
+	// If a previous k3s installation was detected by the probe, run the
+	// official uninstall script first so we start from a clean slate.
+	// This prevents stale service units, environment files, and CNI state
+	// from causing "already activating" or wrong-URL failures on reinstall.
+	uninstallCmd := "if [ -x /usr/local/bin/k3s-agent-uninstall.sh ]; then /usr/local/bin/k3s-agent-uninstall.sh; elif [ -x /usr/local/bin/k3s-uninstall.sh ]; then /usr/local/bin/k3s-uninstall.sh; else echo 'k3s uninstall script not found; nothing to clean up'; fi"
+	if role == RoleServer {
+		uninstallCmd = "if [ -x /usr/local/bin/k3s-uninstall.sh ]; then /usr/local/bin/k3s-uninstall.sh; elif [ -x /usr/local/bin/k3s-agent-uninstall.sh ]; then /usr/local/bin/k3s-agent-uninstall.sh; else echo 'k3s uninstall script not found; nothing to clean up'; fi"
+	}
+	uninstallStep := Step{
+		ID:           uid("uninstall-existing-k3s"),
+		Title:        "Remove existing k3s installation",
+		Description:  "Run the official k3s uninstall script to clean up any previous installation before reinstalling. Skipped when no prior install was detected by the probe.",
+		Command:      uninstallCmd,
+		RequiresRoot: true,
+		Effect:       EffectSystem,
+	}
+	if p == nil || !p.HasK3s {
+		uninstallStep.Skip = true
+		uninstallStep.SkipReason = "no existing k3s installation detected"
+	}
+	s = append(s, uninstallStep)
+
 	s = append(s, Step{
 		ID:           uid("mkdir-rancher"),
 		Title:        "Create /etc/rancher/k3s",
@@ -422,7 +444,13 @@ func installCommand(opts K3sOptions, role NodeRole, k3sURL, token string) string
 
 func startServiceCommand(unit string) string {
 	quotedUnit := shellQuote(unit)
-	return fmt.Sprintf("timeout 5m systemctl start %s || { code=$?; echo %s; systemctl status %s --no-pager || true; journalctl -u %s -n 120 --no-pager || true; exit $code; }",
+	// Stop any pre-existing instance (e.g. from a previous bootstrap run
+	// that was aborted) and clear failed state before starting fresh.
+	// This prevents `systemctl start` from waiting 5 minutes on a stuck
+	// activating unit that will never become active.
+	return fmt.Sprintf("systemctl stop %s 2>/dev/null || true; systemctl reset-failed %s 2>/dev/null || true; timeout 5m systemctl start %s || { code=$?; echo %s; systemctl status %s --no-pager || true; journalctl -u %s -n 120 --no-pager || true; exit $code; }",
+		quotedUnit,
+		quotedUnit,
 		quotedUnit,
 		shellQuote("service failed to start within 5 minutes; recent logs follow"),
 		quotedUnit,

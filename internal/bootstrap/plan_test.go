@@ -146,8 +146,8 @@ func TestBuildPlan_ServerAndAgent(t *testing.T) {
 	if start == nil {
 		t.Fatal("missing start-agent step")
 	}
-	if !strings.Contains(start.Command, "timeout 5m systemctl start k3s-agent") || !strings.Contains(start.Command, "journalctl -u k3s-agent") {
-		t.Errorf("start-agent should timeout and print service logs: %s", start.Command)
+	if !strings.Contains(start.Command, "systemctl stop k3s-agent") || !strings.Contains(start.Command, "timeout 5m systemctl start k3s-agent") || !strings.Contains(start.Command, "journalctl -u k3s-agent") {
+		t.Errorf("start-agent should stop existing service, timeout and print service logs: %s", start.Command)
 	}
 
 	// Agent firewall opens 10250 but NOT 6443 (api server is server-only).
