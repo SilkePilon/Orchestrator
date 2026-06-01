@@ -184,6 +184,15 @@ dropdown.kind-dropdown>button {
   padding-bottom: 0;
 }
 
+paned > separator {
+  background-image: none;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  min-width: 1px;
+  min-height: 1px;
+}
+
 .navigation-sidebar-search {
   padding: 6px 8px;
   border-top: 1px solid @sidebar_border_color;
