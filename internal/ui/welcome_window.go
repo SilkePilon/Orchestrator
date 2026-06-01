@@ -29,10 +29,11 @@ import (
 type WelcomeWindow struct {
 	*adw.ApplicationWindow
 	*common.State
-	ctx     context.Context
-	content *adw.Bin
-	nav     *adw.NavigationView
-	toast   *adw.ToastOverlay
+	ctx                 context.Context
+	content             *adw.Bin
+	nav                 *adw.NavigationView
+	toast               *adw.ToastOverlay
+	noBackgroundOnClose bool
 }
 
 func NewWelcomeWindow(ctx context.Context, app *gtk.Application, state *common.State) *WelcomeWindow {
@@ -55,15 +56,19 @@ func NewWelcomeWindow(ctx context.Context, app *gtk.Application, state *common.S
 
 	go w.showUpdateNotification()
 
-	var h glib.SignalHandle
-	h = w.ConnectCloseRequest(func() bool {
+	var closeHandler glib.SignalHandle
+	closeHandler = w.ConnectCloseRequest(func() bool {
+		if w.noBackgroundOnClose {
+			// Intentional navigation close (e.g. connecting to a cluster).
+			return false
+		}
 		prefs := w.Preferences.Value()
 		if err := prefs.Save(); err != nil {
 			d := widget.ShowErrorDialog(ctx, "Could not save preferences", err)
 			d.ConnectUnrealize(func() {
+				w.HandlerDisconnect(closeHandler)
 				w.Close()
 			})
-			w.HandlerDisconnect(h)
 			return true
 		}
 		return false
@@ -404,6 +409,7 @@ func (w *WelcomeWindow) bootstrapFinishHandler(ctx context.Context, draft *core.
 				return
 			}
 			app := w.Application()
+			w.noBackgroundOnClose = true
 			w.Close()
 			NewClusterWindow(w.ctx, app, state).Present()
 		})

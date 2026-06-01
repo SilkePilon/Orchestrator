@@ -1,0 +1,34 @@
+FROM mcr.microsoft.com/devcontainers/go:1-1.24-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Remove broken yarn repo, install build dependencies, and upgrade meson via pip
+RUN rm -f /etc/apt/sources.list.d/yarn.list /etc/apt/sources.list.d/yarn.list.save && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    cmake libfontconfig1-dev gcc pkg-config libwayland-dev \
+    libgles2-mesa-dev libegl1-mesa-dev libffi-dev libxcursor-dev \
+    libgtk-4-dev libgirepository1.0-dev libgraphene-1.0-dev dbus-x11 \
+    libgl1-mesa-dev libadwaita-1-dev libnotify-bin libgtksourceview-5-dev \
+    ninja-build python3-pip libsass-dev libdbus-1-dev glslc \
+    libgstreamer-plugins-bad1.0-dev libappstream-dev valac flatpak-builder && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip3 install --break-system-packages "meson>=1.4.0"
+
+# Build GLib 2.88.1 from source with parallel compilation
+RUN git clone --depth 1 --branch 2.88.1 https://gitlab.gnome.org/GNOME/glib.git /tmp/glib && \
+    cd /tmp/glib && \
+    meson setup _build --buildtype=release && \
+    meson compile -C _build -j$(nproc) && \
+    sudo ninja -C _build install && \
+    sudo ldconfig && \
+    rm -rf /tmp/glib
+
+# Build libadwaita 1.9.1 from source with parallel compilation
+RUN git clone --depth 1 --branch 1.9.1 https://gitlab.gnome.org/GNOME/libadwaita.git /tmp/libadwaita && \
+    cd /tmp/libadwaita && \
+    meson setup _build --buildtype=release && \
+    meson compile -C _build -j$(nproc) && \
+    sudo ninja -C _build install && \
+    sudo ldconfig && \
+    rm -rf /tmp/libadwaita

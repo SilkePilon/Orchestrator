@@ -3,15 +3,18 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"html"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
+	ansi "github.com/leaanthony/go-ansi-parser"
 )
 
 // applyPage renders the live execution view: a TabView with one tab per
@@ -25,15 +28,37 @@ func (w *Wizard) applyPage() *adw.NavigationPage {
 		return w.pageShell("Apply", "", gtk.NewLabel(""), nil)
 	}
 
-	body := gtk.NewBox(gtk.OrientationVertical, 0)
+	ctx, cancel := context.WithCancel(w.ctx)
+	aborted := &atomic.Bool{}
 
+	// Abort button sits in the header bar — GNOME HIG places destructive
+	// actions in the header, not the content area.
+	abort := gtk.NewButtonWithLabel("Abort")
+	abort.AddCSSClass("destructive-action")
+	abort.ConnectClicked(func() {
+		aborted.Store(true)
+		abort.SetSensitive(false)
+		abort.SetLabel("Aborting…")
+		cancel()
+	})
+
+	// WindowTitle lets us update both title and subtitle as execution progresses.
+	titleWidget := adw.NewWindowTitle("Applying…", "")
+
+	// Progress bar lives in a bottom ActionBar for the correct GNOME
+	// bottom-toolbar appearance (separator line, extend-background colour).
+	progress := gtk.NewProgressBar()
+	progress.SetHExpand(true)
+	progress.SetMarginStart(6)
+	progress.SetMarginEnd(6)
+
+	actionBar := gtk.NewActionBar()
+	actionBar.SetCenterWidget(progress)
+
+	// Tab view — one tab per node.
 	tabView := adw.NewTabView()
 	tabBar := adw.NewTabBar()
 	tabBar.SetView(tabView)
-	body.Append(tabBar)
-
-	tabView.SetVExpand(true)
-	body.Append(tabView)
 
 	logs := map[string]*nodeLog{}
 	tabPages := map[string]*adw.TabPage{}
@@ -52,38 +77,30 @@ func (w *Wizard) applyPage() *adw.NavigationPage {
 		tabPages[nodeID] = page
 	}
 
-	bottom := gtk.NewBox(gtk.OrientationHorizontal, 12)
-	bottom.SetMarginTop(8)
-	bottom.SetMarginBottom(8)
-	bottom.SetMarginStart(12)
-	bottom.SetMarginEnd(12)
-	progress := gtk.NewProgressBar()
-	progress.SetHExpand(true)
-	progress.SetShowText(true)
-	progress.SetText("Starting…")
-	bottom.Append(progress)
+	// ToolbarView is the modern Adwaita way to place toolbars above and
+	// below scrollable content: it draws the correct shadow/separator
+	// lines and applies extend-background colouring automatically.
+	toolbar := adw.NewToolbarView()
+	if len(d.Plan.NodeOrder) > 1 {
+		toolbar.AddTopBar(tabBar)
+	}
+	toolbar.SetContent(tabView)
+	toolbar.AddBottomBar(actionBar)
 
-	ctx, cancel := context.WithCancel(w.ctx)
-	aborted := &atomic.Bool{}
+	// Build the page manually so the Abort button goes into the header
+	// bar end slot instead of the content area.
+	pageBox := gtk.NewBox(gtk.OrientationVertical, 0)
+	navPage := adw.NewNavigationPage(pageBox, "Applying…")
 
-	abort := gtk.NewButtonWithLabel("Abort")
-	abort.AddCSSClass("destructive-action")
-	abort.ConnectClicked(func() {
-		aborted.Store(true)
-		progress.SetText("Aborting…")
-		abort.SetSensitive(false)
-		cancel()
-	})
-	bottom.Append(abort)
+	header := adw.NewHeaderBar()
+	header.SetTitleWidget(titleWidget)
+	header.PackEnd(abort)
+	pageBox.Append(header)
+	pageBox.Append(toolbar)
 
-	body.Append(bottom)
+	go w.runApply(ctx, cancel, aborted, logs, tabView, tabPages, progress, abort, titleWidget)
 
-	page := w.pageShell("Apply", "", body, nil)
-
-	// Drive the executor on a goroutine; marshal events to the UI.
-	go w.runApply(ctx, cancel, aborted, logs, tabView, tabPages, progress, abort)
-
-	return page
+	return navPage
 }
 
 func (w *Wizard) runApply(
@@ -95,6 +112,7 @@ func (w *Wizard) runApply(
 	tabPages map[string]*adw.TabPage,
 	progress *gtk.ProgressBar,
 	abort *gtk.Button,
+	titleWidget *adw.WindowTitle,
 ) {
 	d := w.draft.Value()
 	store, err := core.DefaultKnownHosts()
@@ -149,7 +167,6 @@ func (w *Wizard) runApply(
 			if ev.Kind == "step.end" {
 				doneSteps++
 				progress.SetFraction(float64(doneSteps) / float64(totalSteps))
-				progress.SetText(fmt.Sprintf("%d / %d steps", doneSteps, totalSteps))
 			}
 		})
 	}
@@ -179,11 +196,17 @@ func (w *Wizard) runApply(
 		abort.SetSensitive(false)
 		if success {
 			progress.SetFraction(1)
-			progress.SetText("Done")
+			progress.SetText("All steps completed")
+			titleWidget.SetTitle("Done")
+			titleWidget.SetSubtitle("Bootstrap completed successfully")
 		} else if aborted.Load() {
 			progress.SetText("Canceled")
+			titleWidget.SetTitle("Canceled")
+			titleWidget.SetSubtitle("")
 		} else {
 			progress.SetText("Failed")
+			titleWidget.SetTitle("Failed")
+			titleWidget.SetSubtitle("One or more steps did not complete")
 		}
 		w.push(w.finishPage(success, kubeconfig, finalErr))
 	})
@@ -204,24 +227,34 @@ type nodeLog struct {
 func newNodeLog(steps []core.Step) *nodeLog {
 	pane := gtk.NewPaned(gtk.OrientationHorizontal)
 
+	// Left side: step list styled as a navigation sidebar.
 	listBox := gtk.NewListBox()
 	listBox.AddCSSClass("navigation-sidebar")
-	listScroll := gtk.NewScrolledWindow()
-	listScroll.SetChild(listBox)
-	listScroll.SetSizeRequest(260, -1)
-	pane.SetStartChild(listScroll)
+	listBox.SetSelectionMode(gtk.SelectionNone)
+
+	sidebarScroll := gtk.NewScrolledWindow()
+	sidebarScroll.SetChild(listBox)
+	sidebarScroll.SetSizeRequest(290, -1)
+	sidebarScroll.SetPolicy(gtk.PolicyNever, gtk.PolicyAutomatic)
+	pane.SetStartChild(sidebarScroll)
 	pane.SetResizeStartChild(false)
 
+	// Right side: monospace log output.
 	view := gtk.NewTextView()
 	view.SetMonospace(true)
 	view.SetEditable(false)
 	view.SetCursorVisible(false)
 	view.SetWrapMode(gtk.WrapWordChar)
-	scroll := gtk.NewScrolledWindow()
-	scroll.SetVExpand(true)
-	scroll.SetHExpand(true)
-	scroll.SetChild(view)
-	pane.SetEndChild(scroll)
+	view.SetLeftMargin(10)
+	view.SetRightMargin(10)
+	view.SetTopMargin(8)
+	view.SetBottomMargin(8)
+
+	logScroll := gtk.NewScrolledWindow()
+	logScroll.SetVExpand(true)
+	logScroll.SetHExpand(true)
+	logScroll.SetChild(view)
+	pane.SetEndChild(logScroll)
 	pane.SetResizeEndChild(true)
 
 	nl := &nodeLog{
@@ -247,15 +280,17 @@ func (nl *nodeLog) handle(ev core.Event) {
 	switch ev.Kind {
 	case "step.start":
 		if r, ok := nl.steps[ev.StepID]; ok {
-			r.setStatus(core.StatusRunning, 0)
+			r.setStatus(core.StatusRunning, 0, "")
 		}
 	case "step.end":
-		if r, ok := nl.steps[ev.StepID]; ok {
-			r.setStatus(ev.Status, ev.ExitCode)
-		}
+		detail := ""
 		if ev.Status == core.StatusFailed {
+			detail = fmt.Sprintf("Exited with code %d", ev.ExitCode)
 			nl.failed = true
 			nl.appendLine(fmt.Sprintf("✗ step failed (exit %d): %v", ev.ExitCode, ev.Err))
+		}
+		if r, ok := nl.steps[ev.StepID]; ok {
+			r.setStatus(ev.Status, ev.ExitCode, detail)
 		}
 	case "stdout", "stderr", "log":
 		nl.appendLine(ev.Line)
@@ -263,79 +298,125 @@ func (nl *nodeLog) handle(ev core.Event) {
 }
 
 func (nl *nodeLog) appendLine(line string) {
-	end := nl.buf.EndIter()
 	stamp := time.Now().Format("15:04:05")
-	nl.buf.Insert(end, fmt.Sprintf("[%s] %s\n", stamp, line))
+	prefix := fmt.Sprintf("[%s] ", stamp)
+	nl.buf.Insert(nl.buf.EndIter(), prefix)
+
+	segments, err := ansi.Parse(line)
+	if err != nil || len(segments) == 0 {
+		nl.buf.Insert(nl.buf.EndIter(), line+"\n")
+	} else {
+		for _, seg := range segments {
+			var attrs []string
+			if seg.FgCol != nil {
+				attrs = append(attrs, fmt.Sprintf(`foreground=%q`, seg.FgCol.Hex))
+			}
+			if seg.BgCol != nil {
+				attrs = append(attrs, fmt.Sprintf(`background=%q`, seg.BgCol.Hex))
+			}
+			if len(attrs) > 0 {
+				nl.buf.InsertMarkup(nl.buf.EndIter(), fmt.Sprintf(`<span %s>%s</span>`, strings.Join(attrs, " "), html.EscapeString(seg.Label)))
+			} else {
+				nl.buf.Insert(nl.buf.EndIter(), seg.Label)
+			}
+		}
+		nl.buf.Insert(nl.buf.EndIter(), "\n")
+	}
+
 	// Autoscroll: scroll the view to the end mark.
 	mark := nl.buf.CreateMark("end", nl.buf.EndIter(), false)
 	nl.view.ScrollMarkOnscreen(mark)
 	nl.buf.DeleteMark(mark)
 }
 
-// stepStatusRow is the sidebar entry for a single step.
+// stepStatusRow is one entry in the step sidebar, built on adw.ActionRow
+// for proper GNOME styling: hover highlight, title+subtitle typography,
+// and a prefix slot for the status indicator.
 type stepStatusRow struct {
-	row       *gtk.Box
-	indicator *adw.Bin
-	icon      *gtk.Image
-	spinner   *gtk.Spinner
-	title     *gtk.Label
+	row         *adw.ActionRow
+	indicator   *adw.Bin
+	icon        *gtk.Image
+	spinner     *gtk.Spinner
+	description string // original description to restore after status changes
 }
 
 func newStepStatusRow(st core.Step) *stepStatusRow {
-	row := gtk.NewBox(gtk.OrientationHorizontal, 8)
-	row.SetMarginTop(4)
-	row.SetMarginBottom(4)
-	row.SetMarginStart(8)
-	row.SetMarginEnd(8)
+	row := adw.NewActionRow()
+	row.SetTitle(st.Title)
+
+	// Subtitle: the step description, overridden by the skip reason when
+	// the step is pre-skipped by the plan generator.
+	subtitle := st.Description
+	if st.Skip && st.SkipReason != "" {
+		subtitle = "Skipped: " + st.SkipReason
+	}
+	if subtitle != "" {
+		row.SetSubtitle(subtitle)
+	}
+
+	// Status indicator in the prefix slot.
 	indicator := adw.NewBin()
-	indicator.SetSizeRequest(12, 12)
 	icon := gtk.NewImageFromIconName("content-loading-symbolic")
-	icon.SetPixelSize(12)
+	icon.SetPixelSize(16)
 	icon.AddCSSClass("dim-label")
 	spinner := gtk.NewSpinner()
-	spinner.SetSizeRequest(12, 12)
 	indicator.SetChild(icon)
-	row.Append(indicator)
-	title := gtk.NewLabel(st.Title)
-	title.SetXAlign(0)
-	title.SetEllipsize(2) // PANGO_ELLIPSIZE_END
-	row.Append(title)
-	statusRow := &stepStatusRow{row: row, indicator: indicator, icon: icon, spinner: spinner, title: title}
-	if st.Skip {
-		statusRow.setStatus(core.StatusSkipped, 0)
+	row.AddPrefix(indicator)
+
+	sr := &stepStatusRow{
+		row:         row,
+		indicator:   indicator,
+		icon:        icon,
+		spinner:     spinner,
+		description: st.Description,
 	}
-	return statusRow
+	if st.Skip {
+		sr.setStatus(core.StatusSkipped, 0, "")
+	}
+	return sr
 }
 
-func (statusRow *stepStatusRow) widget() gtk.Widgetter { return statusRow.row }
+func (sr *stepStatusRow) widget() gtk.Widgetter { return sr.row }
 
-func (statusRow *stepStatusRow) setStatus(status core.StepStatus, exit int) {
-	statusRow.spinner.Stop()
-	statusRow.indicator.SetChild(statusRow.icon)
-	statusRow.icon.RemoveCSSClass("success")
-	statusRow.icon.RemoveCSSClass("error")
-	statusRow.icon.RemoveCSSClass("warning")
-	statusRow.icon.RemoveCSSClass("dim-label")
+func (sr *stepStatusRow) setStatus(status core.StepStatus, exit int, detail string) {
+	sr.spinner.Stop()
+	sr.indicator.SetChild(sr.icon)
+	sr.icon.RemoveCSSClass("success")
+	sr.icon.RemoveCSSClass("error")
+	sr.icon.RemoveCSSClass("warning")
+	sr.icon.RemoveCSSClass("dim-label")
 	switch status {
 	case core.StatusRunning:
-		statusRow.indicator.SetChild(statusRow.spinner)
-		statusRow.spinner.Start()
+		sr.indicator.SetChild(sr.spinner)
+		sr.spinner.Start()
+		if sr.description != "" {
+			sr.row.SetSubtitle(sr.description)
+		} else {
+			sr.row.SetSubtitle("")
+		}
 	case core.StatusDone:
-		statusRow.icon.SetFromIconName("verified-checkmark-symbolic")
-		statusRow.icon.AddCSSClass("success")
+		sr.icon.SetFromIconName("verified-checkmark-symbolic")
+		sr.icon.AddCSSClass("success")
+		if sr.description != "" {
+			sr.row.SetSubtitle(sr.description)
+		}
 	case core.StatusFailed:
-		statusRow.icon.SetFromIconName("cross-small-symbolic")
-		statusRow.icon.AddCSSClass("error")
-		statusRow.title.SetText(statusRow.title.Text() + fmt.Sprintf(" (exit %d)", exit))
+		sr.icon.SetFromIconName("cross-small-symbolic")
+		sr.icon.AddCSSClass("error")
+		if detail != "" {
+			sr.row.SetSubtitle(detail)
+		}
 	case core.StatusSkipped:
-		statusRow.icon.SetFromIconName("action-unavailable-symbolic")
-		statusRow.icon.AddCSSClass("dim-label")
+		sr.icon.SetFromIconName("action-unavailable-symbolic")
+		sr.icon.AddCSSClass("dim-label")
+		// Subtitle was already set to "Skipped: …" in the constructor.
 	case core.StatusCanceled:
-		statusRow.icon.SetFromIconName("process-stop-symbolic")
-		statusRow.icon.AddCSSClass("warning")
+		sr.icon.SetFromIconName("process-stop-symbolic")
+		sr.icon.AddCSSClass("warning")
+		sr.row.SetSubtitle("Canceled")
 	default:
-		statusRow.icon.SetFromIconName("content-loading-symbolic")
-		statusRow.icon.AddCSSClass("dim-label")
+		sr.icon.SetFromIconName("content-loading-symbolic")
+		sr.icon.AddCSSClass("dim-label")
 	}
 }
 

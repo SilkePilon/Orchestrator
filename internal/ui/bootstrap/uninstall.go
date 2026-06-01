@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
-	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/SilkePilon/Orchestrator/api"
 	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
 	"github.com/SilkePilon/Orchestrator/internal/pubsub"
 	"github.com/SilkePilon/Orchestrator/internal/ui/common"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 )
 
 func NewUninstallWizard(ctx context.Context, state *common.State, cluster api.ClusterPreferences, onFinish func()) *Wizard {

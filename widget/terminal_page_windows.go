@@ -3,8 +3,8 @@ package widget
 import (
 	"context"
 
-	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/SilkePilon/Orchestrator/api"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	corev1 "k8s.io/api/core/v1"
 )
 

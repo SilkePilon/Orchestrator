@@ -9,6 +9,7 @@ import (
 	"github.com/SilkePilon/Orchestrator/internal/ctxt"
 	"github.com/SilkePilon/Orchestrator/internal/ui/common"
 	"github.com/SilkePilon/Orchestrator/internal/ui/editor"
+	"github.com/SilkePilon/Orchestrator/internal/ui/gitops"
 	"github.com/SilkePilon/Orchestrator/internal/ui/list"
 	"github.com/SilkePilon/Orchestrator/internal/ui/single"
 	"github.com/SilkePilon/Orchestrator/widget"
@@ -52,12 +53,35 @@ func NewClusterWindow(ctx context.Context, app *gtk.Application, state *common.C
 		if err := prefs.Save(); err != nil {
 			d := widget.ShowErrorDialog(ctx, "Could not save preferences", err)
 			d.ConnectUnrealize(func() {
+				w.HandlerDisconnect(h)
 				w.Close()
 			})
-			w.HandlerDisconnect(h)
 			return true
 		}
-		return false
+		app := w.Application()
+		if !isLastVisibleWindow(app) {
+			return false
+		}
+		// Last visible window — ask the user what to do.
+		dialog := adw.NewAlertDialog(
+			"Keep Running in Background?",
+			"Orchestrator can keep running in the background so you can reopen it quickly.",
+		)
+		dialog.AddResponse("quit", "Quit")
+		dialog.AddResponse("background", "Run in Background")
+		dialog.SetResponseAppearance("background", adw.ResponseSuggested)
+		dialog.SetDefaultResponse("background")
+		dialog.ConnectResponse(func(response string) {
+			switch response {
+			case "quit":
+				w.HandlerDisconnect(h)
+				w.Close()
+			case "background":
+				goBackground(app)
+			}
+		})
+		dialog.Present(&w.Window)
+		return true
 	})
 
 	w.toastOverlay = adw.NewToastOverlay()
@@ -117,14 +141,11 @@ func NewClusterWindow(ctx context.Context, app *gtk.Application, state *common.C
 
 	w.listView = list.NewList(ctx, w.ClusterState, w.dialog, editor)
 	viewStack.AddChild(w.listView).SetName("list")
-	viewStack.AddChild(NewHealthOverviewView(ctx, w.ClusterState)).SetName("health")
-	viewStack.AddChild(NewProblemTimelineView(ctx, w.ClusterState)).SetName("timeline")
-	viewStack.AddChild(NewBenchmarkView(ctx, w.ClusterState)).SetName("benchmark")
-	viewStack.AddChild(NewRBACViewer(ctx, w.ClusterState)).SetName("rbac")
-	viewStack.AddChild(NewCostWasteView(ctx, w.ClusterState)).SetName("cost")
-	viewStack.AddChild(NewSecurityScanView(ctx, w.ClusterState)).SetName("security")
-	viewStack.AddChild(NewAppsView(ctx, w.ClusterState)).SetName("apps")
 	viewStack.SetVisibleChild(w.listView)
+
+	gitopsView := gitops.NewView(ctx, w.ClusterState, editor)
+	viewStack.AddChild(gitopsView).SetName("gitops")
+
 	paned.SetEndChild(viewStack)
 
 	w.createActions()

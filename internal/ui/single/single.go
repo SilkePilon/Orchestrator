@@ -5,12 +5,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
-	"github.com/diamondburned/gotk4-sourceview/pkg/gtksource/v5"
-	"github.com/diamondburned/gotk4/pkg/core/glib"
-	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/diamondburned/gotk4/pkg/pango"
-	"github.com/google/uuid"
 	"github.com/SilkePilon/Orchestrator/api"
 	"github.com/SilkePilon/Orchestrator/internal/ctxt"
 	"github.com/SilkePilon/Orchestrator/internal/pubsub"
@@ -18,6 +12,12 @@ import (
 	"github.com/SilkePilon/Orchestrator/internal/ui/editor"
 	"github.com/SilkePilon/Orchestrator/internal/util"
 	"github.com/SilkePilon/Orchestrator/widget"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	"github.com/diamondburned/gotk4-sourceview/pkg/gtksource/v5"
+	"github.com/diamondburned/gotk4/pkg/core/glib"
+	"github.com/diamondburned/gotk4/pkg/gtk/v4"
+	"github.com/diamondburned/gotk4/pkg/pango"
+	"github.com/google/uuid"
 	"k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -28,10 +28,23 @@ type SingleView struct {
 	ctx          context.Context
 	prefPage     *adw.PreferencesPage
 	groups       []*adw.PreferencesGroup
+	loadingGroup *adw.PreferencesGroup
 	sourceBuffer *gtksource.Buffer
 	sourceView   *gtksource.View
+	stack        *adw.ViewStack
 	editor       *editor.EditorWindow
 	navView      *adw.NavigationView
+
+	// pendingObject holds the object whose YAML has not yet been loaded into the
+	// source buffer. Serialising and syntax-highlighting large objects (e.g. Argo
+	// CD Applications, which also update frequently) is expensive, so it is
+	// deferred until the Yaml tab is actually visible.
+	pendingObject  client.Object
+	sourceRendered bool
+
+	// propGen is incremented on every selection change so that asynchronously
+	// built properties from a previous selection can be discarded.
+	propGen int
 
 	PinAdded   pubsub.Topic[client.Object]
 	PinRemoved pubsub.Topic[client.Object]
@@ -121,9 +134,13 @@ func NewSingleView(ctx context.Context, state *common.ClusterState, editor *edit
 	header.PackStart(kind)
 
 	stack := adw.NewViewStack()
-	stack.AddTitledWithIcon(view.prefPage, "properties", "Properties", "table-properties-symbolic")
+	stack.AddTitledWithIcon(view.prefPage, "properties", "Properties", "view-list-bullet-symbolic")
 	stack.AddTitledWithIcon(view.createSource(), "source", "Yaml", "code-symbolic")
 	content.Append(stack)
+	view.stack = stack
+	stack.NotifyProperty("visible-child-name", func() {
+		view.maybeRenderSource()
+	})
 
 	switcher := adw.NewViewSwitcher()
 	switcher.SetPolicy(adw.ViewSwitcherPolicyWide)
@@ -149,6 +166,8 @@ func NewSingleView(ctx context.Context, state *common.ClusterState, editor *edit
 	watchCtx, cancelWatch := context.WithCancel(ctx)
 	view.SelectedObject.Sub(ctx, func(object client.Object) {
 		if object == nil {
+			view.pendingObject = nil
+			view.sourceRendered = true
 			view.sourceBuffer.SetText("")
 			view.updateProperties([]api.Property{})
 			if visible := view.navView.VisiblePage(); visible != nil && visible.Tag() == view.Tag() {
@@ -162,45 +181,63 @@ func NewSingleView(ctx context.Context, state *common.ClusterState, editor *edit
 		cancelWatch()
 		watchCtx, cancelWatch = context.WithCancel(ctx)
 		gvr, _ := view.Cluster.GVKToR(object.GetObjectKind().GroupVersionKind())
-		view.Cluster.AddInformerEventHandler(watchCtx, *gvr, cache.ResourceEventHandlerFuncs{
-			UpdateFunc: func(_, new interface{}) {
-				obj := new.(client.Object)
-				if obj.GetUID() != object.GetUID() {
-					return
-				}
-				view.SelectedObject.Pub(obj)
-			},
-			DeleteFunc: func(obj interface{}) {
-				if obj.(client.Object).GetUID() != object.GetUID() {
-					return
-				}
-				ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast(fmt.Sprintf("%v was deleted", object.GetName())))
-				glib.IdleAdd(func() {
-					if pin.Active() {
-						view.PinRemoved.Pub(object)
+		if gvr != nil {
+			view.Cluster.AddInformerEventHandler(watchCtx, *gvr, cache.ResourceEventHandlerFuncs{
+				UpdateFunc: func(_, new interface{}) {
+					obj := new.(client.Object)
+					if obj.GetUID() != object.GetUID() {
+						return
 					}
-					view.Deleted.Pub(object)
-				})
-			},
-		})
+					view.SelectedObject.Pub(obj)
+				},
+				DeleteFunc: func(obj interface{}) {
+					if obj.(client.Object).GetUID() != object.GetUID() {
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast(fmt.Sprintf("%v was deleted", object.GetName())))
+					glib.IdleAdd(func() {
+						if pin.Active() {
+							view.PinRemoved.Pub(object)
+						}
+						view.Deleted.Pub(object)
+					})
+				},
+			})
+		}
 
 		resource := view.GetAPIResource(object.GetObjectKind().GroupVersionKind())
 
-		yaml, err := view.Encoder.EncodeYAML(object)
-		if err != nil {
-			view.sourceBuffer.SetText(fmt.Sprintf("error: %v", err))
-		} else {
-			view.sourceBuffer.SetText(string(yaml))
-		}
+		view.pendingObject = object
+		view.sourceRendered = false
+		view.maybeRenderSource()
 
-		var props []api.Property
-		for _, ext := range view.Extensions {
-			props = ext.CreateObjectProperties(ctx, resource, object, props)
-		}
-		sort.Slice(props, func(i, j int) bool {
-			return props[i].GetPriority() > props[j].GetPriority()
-		})
-		view.updateProperties(props)
+		// Building properties can make blocking network calls (e.g. resolving
+		// env-var ConfigMap/Secret references for Pods), so do it off the main
+		// thread to keep the UI responsive. A generation counter discards results
+		// from selections that have since been superseded.
+		view.propGen++
+		gen := view.propGen
+		buildCtx := watchCtx
+		view.updateProperties([]api.Property{})
+		view.setLoading(true)
+		go func() {
+			var props []api.Property
+			for _, ext := range view.Extensions {
+				if buildCtx.Err() != nil {
+					return
+				}
+				props = ext.CreateObjectProperties(buildCtx, resource, object, props)
+			}
+			sort.Slice(props, func(i, j int) bool {
+				return props[i].GetPriority() > props[j].GetPriority()
+			})
+			glib.IdleAdd(func() {
+				if view.propGen != gen {
+					return
+				}
+				view.updateProperties(props)
+			})
+		}()
 
 		pinned := false
 		for _, p := range view.ClusterPreferences.Value().Navigation.Pins {
@@ -215,7 +252,30 @@ func NewSingleView(ctx context.Context, state *common.ClusterState, editor *edit
 	return &view
 }
 
+func (view *SingleView) maybeRenderSource() {
+	if view.sourceRendered || view.sourceBuffer == nil {
+		return
+	}
+	if view.stack == nil || view.stack.VisibleChildName() != "source" {
+		return
+	}
+	view.sourceRendered = true
+
+	object := view.pendingObject
+	if object == nil {
+		view.sourceBuffer.SetText("")
+		return
+	}
+	yaml, err := view.Encoder.EncodeYAML(object)
+	if err != nil {
+		view.sourceBuffer.SetText(fmt.Sprintf("error: %v", err))
+	} else {
+		view.sourceBuffer.SetText(string(yaml))
+	}
+}
+
 func (view *SingleView) updateProperties(properties []api.Property) {
+	view.setLoading(false)
 	for _, g := range view.groups {
 		view.prefPage.Remove(g)
 	}
@@ -227,6 +287,42 @@ func (view *SingleView) updateProperties(properties []api.Property) {
 		view.groups = append(view.groups, group)
 		view.prefPage.Add(group)
 	}
+}
+
+// setLoading shows or hides a centered spinner with a "Loading…" label on the
+// properties page, so the sheet isn't blank while properties are being built
+// off the main thread.
+func (view *SingleView) setLoading(loading bool) {
+	if !loading {
+		if view.loadingGroup != nil {
+			view.prefPage.Remove(view.loadingGroup)
+			view.loadingGroup = nil
+		}
+		return
+	}
+	if view.loadingGroup != nil {
+		return
+	}
+
+	box := gtk.NewBox(gtk.OrientationVertical, 12)
+	box.SetHAlign(gtk.AlignCenter)
+	box.SetVAlign(gtk.AlignCenter)
+	box.SetMarginTop(48)
+	box.SetMarginBottom(48)
+
+	spinner := gtk.NewSpinner()
+	spinner.SetSizeRequest(32, 32)
+	spinner.Start()
+	box.Append(spinner)
+
+	label := gtk.NewLabel("Loading…")
+	label.AddCSSClass("dim-label")
+	box.Append(label)
+
+	group := adw.NewPreferencesGroup()
+	group.Add(box)
+	view.loadingGroup = group
+	view.prefPage.Add(group)
 }
 
 func (view *SingleView) createSource() *gtk.ScrolledWindow {

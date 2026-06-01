@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
-	"github.com/diamondburned/gotk4/pkg/gio/v2"
-	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/SilkePilon/Orchestrator/api"
 	"github.com/SilkePilon/Orchestrator/internal/ui/common"
 	"github.com/SilkePilon/Orchestrator/internal/ui/editor"
 	"github.com/SilkePilon/Orchestrator/internal/util"
 	"github.com/SilkePilon/Orchestrator/widget"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	"github.com/diamondburned/gotk4/pkg/gio/v2"
+	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	corev1 "k8s.io/api/core/v1"
 )
 

@@ -50,7 +50,6 @@ type Navigation struct {
 	resources             []*gtk.ListBoxRow
 	viewStack             *gtk.Stack
 	editor                *editor.EditorWindow
-	resourcesToggle       *gtk.ToggleButton
 	pinsToggle            *gtk.ToggleButton
 	search                *gtk.SearchEntry
 	cancelFuncs           map[string]context.CancelFunc
@@ -71,10 +70,27 @@ func NewNavigation(ctx context.Context, state *common.ClusterState, viewStack *g
 	n.AddCSSClass("navigation-sidebar")
 
 	header := adw.NewHeaderBar()
+
+	// Build the title widget: cluster name and optional distribution badge
+	// side-by-side. The box fills the header's title area so the text starts
+	// from the left of that region rather than being centered.
+	titleBox := gtk.NewBox(gtk.OrientationHorizontal, 6)
+	titleBox.SetVAlign(gtk.AlignCenter)
+	titleBox.SetHAlign(gtk.AlignFill)
 	title := gtk.NewLabel(n.ClusterPreferences.Value().Name)
 	title.SetEllipsize(pango.EllipsizeEnd)
 	title.AddCSSClass("heading")
-	header.SetTitleWidget(title)
+	title.SetHAlign(gtk.AlignStart)
+	titleBox.Append(title)
+	if dist := n.Cluster.Distribution; dist != "" {
+		distLabel := gtk.NewLabel(dist)
+		distLabel.SetVAlign(gtk.AlignCenter)
+		distLabel.AddCSSClass("caption")
+		distLabel.AddCSSClass("dim-label")
+		distLabel.AddCSSClass("pill")
+		titleBox.Append(distLabel)
+	}
+	header.SetTitleWidget(titleBox)
 	header.SetShowEndTitleButtons(false)
 	header.SetShowStartTitleButtons(style.Eq(style.Darwin))
 
@@ -97,27 +113,26 @@ func NewNavigation(ctx context.Context, state *common.ClusterState, viewStack *g
 	popover := gtk.NewPopoverMenuFromModel(m)
 	button.SetPopover(popover)
 
+	// Single pin toggle: off = resources list, on = pinned view.
+	n.pinsToggle = gtk.NewToggleButton()
+	n.pinsToggle.AddCSSClass("flat")
+	n.pinsToggle.SetIconName("view-pin-symbolic")
+
 	header.PackEnd(button)
+	header.PackEnd(n.pinsToggle)
 	n.AddTopBar(header)
+
+	n.search = gtk.NewSearchEntry()
+	n.search.SetObjectProperty("placeholder-text", "Filter...")
+	n.search.SetHExpand(true)
+
+	searchBox := gtk.NewBox(gtk.OrientationHorizontal, 0)
+	searchBox.AddCSSClass("navigation-sidebar-search")
+	searchBox.Append(n.search)
+	n.AddBottomBar(searchBox)
 
 	content := gtk.NewBox(gtk.OrientationVertical, 4)
 	n.SetContent(content)
-
-	toggleBox := gtk.NewBox(gtk.OrientationHorizontal, 4)
-	toggleBox.SetMarginStart(8)
-	toggleBox.SetMarginEnd(8)
-	content.Append(toggleBox)
-	n.resourcesToggle = gtk.NewToggleButton()
-	n.resourcesToggle.AddCSSClass("flat")
-	n.resourcesToggle.SetIconName("view-list-symbolic")
-	n.resourcesToggle.SetHExpand(true)
-	n.resourcesToggle.SetActive(true)
-	toggleBox.Append(n.resourcesToggle)
-	n.pinsToggle = gtk.NewToggleButton()
-	n.pinsToggle.AddCSSClass("flat")
-	n.pinsToggle.SetIconName("pin-symbolic")
-	n.pinsToggle.SetHExpand(true)
-	toggleBox.Append(n.pinsToggle)
 
 	navStack := gtk.NewStack()
 	content.Append(navStack)
@@ -127,15 +142,12 @@ func NewNavigation(ctx context.Context, state *common.ClusterState, viewStack *g
 	resw.SetChild(resbin)
 	resw.SetVExpand(true)
 
-	resBox := gtk.NewBox(gtk.OrientationVertical, 4)
-	resBox.Append(resw)
-	n.search = gtk.NewSearchEntry()
-	n.search.SetVAlign(gtk.AlignEnd)
-	n.search.SetObjectProperty("placeholder-text", "Filter...")
 	n.search.ConnectSearchChanged(func() {
 		resbin.SetChild(n.createResourceList(n.ClusterPreferences.Value()))
 	})
-	resBox.Append(n.search)
+
+	resBox := gtk.NewBox(gtk.OrientationVertical, 0)
+	resBox.Append(resw)
 
 	navStack.AddChild(resBox)
 	navStack.SetVisibleChild(resBox)
@@ -166,30 +178,19 @@ func NewNavigation(ctx context.Context, state *common.ClusterState, viewStack *g
 	pinw.SetVExpand(true)
 	navStack.AddChild(pinw)
 
-	n.resourcesToggle.ConnectClicked(func() {
-		n.resourcesToggle.SetActive(true)
-	})
-	n.resourcesToggle.ConnectToggled(func() {
-		if n.resourcesToggle.Active() {
-			n.pinsToggle.SetActive(false)
-			navStack.SetVisibleChild(resBox)
-			if row := n.resourceList.SelectedRow(); row != nil {
-				row.Activate()
-			}
-		}
-	})
-	n.pinsToggle.ConnectClicked(func() {
-		n.pinsToggle.SetActive(true)
-	})
 	n.pinsToggle.ConnectToggled(func() {
 		if n.pinsToggle.Active() {
-			n.resourcesToggle.SetActive(false)
 			navStack.SetVisibleChild(pinw)
 			if row := n.pinList.SelectedRow(); row != nil {
 				row.Activate()
 			} else if len(n.pinRows) > 0 {
 				n.pinList.SelectRow(n.pinRows[0])
 				n.pinRows[0].Activate()
+			}
+		} else {
+			navStack.SetVisibleChild(resBox)
+			if row := n.resourceList.SelectedRow(); row != nil {
+				row.Activate()
 			}
 		}
 	})
@@ -245,17 +246,17 @@ func (n *Navigation) createResourceList(prefs api.ClusterPreferences) *gtk.ListB
 		if row == nil {
 			return
 		}
-		if row.Name() == "health" || row.Name() == "timeline" || row.Name() == "benchmark" || row.Name() == "rbac" || row.Name() == "cost" || row.Name() == "security" || row.Name() == "apps" {
+		if page, ok := strings.CutPrefix(row.Name(), staticRowPrefix); ok {
 			pages := n.viewStack.Pages()
 			for i := 0; i < int(pages.NItems()); i++ {
-				page := pages.Item(uint(i)).Cast().(*gtk.StackPage)
-				if page.Name() == row.Name() {
-					n.viewStack.SetVisibleChild(page.Child())
-					return
+				sp := pages.Item(uint(i)).Cast().(*gtk.StackPage)
+				if sp.Name() == page {
+					n.viewStack.SetVisibleChild(sp.Child())
+					break
 				}
 			}
+			return
 		}
-
 		var gvr schema.GroupVersionResource
 		if err := json.Unmarshal([]byte(row.Name()), &gvr); err != nil {
 			return
@@ -274,6 +275,9 @@ func (n *Navigation) createResourceList(prefs api.ClusterPreferences) *gtk.ListB
 		if row == nil {
 			return
 		}
+		if strings.HasPrefix(row.Name(), staticRowPrefix) {
+			return
+		}
 
 		var gvr schema.GroupVersionResource
 		if err := json.Unmarshal([]byte(row.Name()), &gvr); err != nil {
@@ -289,6 +293,10 @@ func (n *Navigation) createResourceList(prefs api.ClusterPreferences) *gtk.ListB
 
 	n.favourites = nil
 	n.resources = nil
+
+	if len(n.search.Text()) == 0 {
+		n.resourceList.Append(n.createStaticRow("GitOps", "branch-symbolic", "gitops"))
+	}
 
 	for i, resource := range n.Resources {
 		if len(n.search.Text()) > 0 {
@@ -317,16 +325,6 @@ func (n *Navigation) createResourceList(prefs api.ClusterPreferences) *gtk.ListB
 			n.resourceList.SelectRow(row)
 		}
 	}
-
-	thematic := n.createHeaderRow("Tools")
-	n.resourceList.Append(thematic)
-	n.resourceList.Append(n.createToolRow("health", "Health", "Cluster overview", "heart-outline-thick-symbolic"))
-	n.resourceList.Append(n.createToolRow("timeline", "Timeline", "Recent problems", "delay-small-symbolic"))
-	n.resourceList.Append(n.createToolRow("benchmark", "Benchmark", "Performance tests", "speedometer-symbolic"))
-	n.resourceList.Append(n.createToolRow("rbac", "RBAC", "Access & roles", "permissions-generic-symbolic"))
-	n.resourceList.Append(n.createToolRow("cost", "Cost", "Waste & idle", "wallet-symbolic"))
-	n.resourceList.Append(n.createToolRow("security", "Security", "Posture checks", "shield-warning-symbolic"))
-	n.resourceList.Append(n.createToolRow("apps", "Apps", "Install templates", "application-x-executable-symbolic"))
 
 	if len(n.favourites) > 0 {
 		header := n.createHeaderRow("Favourites")
@@ -410,6 +408,23 @@ func createObjectRow(ref corev1.ObjectReference) *gtk.ListBoxRow {
 	label.SetEllipsize(pango.EllipsizeEnd)
 	box.Append(label)
 
+	return row
+}
+
+const staticRowPrefix = "__static__:"
+
+func (n *Navigation) createStaticRow(title, iconName, page string) *gtk.ListBoxRow {
+	row := gtk.NewListBoxRow()
+	row.SetName(staticRowPrefix + page)
+	box := gtk.NewBox(gtk.OrientationHorizontal, 8)
+	box.SetMarginTop(4)
+	box.SetMarginBottom(4)
+	box.Append(gtk.NewImageFromIconName(iconName))
+	label := gtk.NewLabel(title)
+	label.SetHAlign(gtk.AlignStart)
+	label.SetEllipsize(pango.EllipsizeEnd)
+	box.Append(label)
+	row.SetChild(box)
 	return row
 }
 
@@ -510,30 +525,6 @@ func (n *Navigation) createHeaderRow(label string) *gtk.ListBoxRow {
 	row := gtk.NewListBoxRow()
 	row.SetChild(box)
 	row.SetSelectable(false)
-	return row
-}
-
-func (n *Navigation) createToolRow(name, title, subtitle, iconName string) *gtk.ListBoxRow {
-	row := gtk.NewListBoxRow()
-	row.SetName(name)
-	box := gtk.NewBox(gtk.OrientationHorizontal, 8)
-	box.SetMarginTop(4)
-	box.SetMarginBottom(4)
-	box.Append(gtk.NewImageFromIconName(iconName))
-	vbox := gtk.NewBox(gtk.OrientationVertical, 2)
-	vbox.SetVAlign(gtk.AlignCenter)
-	box.Append(vbox)
-	label := gtk.NewLabel(title)
-	label.SetHAlign(gtk.AlignStart)
-	label.SetEllipsize(pango.EllipsizeEnd)
-	vbox.Append(label)
-	label = gtk.NewLabel(subtitle)
-	label.SetHAlign(gtk.AlignStart)
-	label.AddCSSClass("caption")
-	label.AddCSSClass("dim-label")
-	label.SetEllipsize(pango.EllipsizeEnd)
-	vbox.Append(label)
-	row.SetChild(box)
 	return row
 }
 
@@ -639,7 +630,7 @@ func (n *Navigation) RemovePin(object client.Object) {
 	n.ClusterPreferences.Pub(prefs)
 
 	if len(n.pinRows) == 0 {
-		n.resourcesToggle.SetActive(true)
+		n.pinsToggle.SetActive(false)
 	} else if n.pinList.SelectedRow() == nil {
 		n.pinList.SelectRow(n.pinRows[0])
 		n.pinList.SelectedRow().Activate()

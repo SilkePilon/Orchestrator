@@ -6,13 +6,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SilkePilon/Orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
+	"github.com/SilkePilon/Orchestrator/internal/util"
+	"github.com/SilkePilon/Orchestrator/widget"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/SilkePilon/Orchestrator/api"
-	"github.com/SilkePilon/Orchestrator/internal/util"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/reference"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -115,7 +118,83 @@ func (e *Batch) CreateObjectProperties(ctx context.Context, resource *metav1.API
 			})
 		}
 		props = append(props, prop)
+	case *batchv1.CronJob:
+		props = append(props, e.cronJobActionsProperty(ctx, object))
 	}
 
 	return props
 }
+
+func (e *Batch) cronJobActionsProperty(ctx context.Context, cron *batchv1.CronJob) api.Property {
+	suspended := ptr.Deref(cron.Spec.Suspend, false)
+	return &api.GroupProperty{
+		ID:       "actions",
+		Priority: 100,
+		Name:     "Actions",
+		Widget: func(w gtk.Widgetter, _ *adw.NavigationView) {
+			group, ok := w.(*adw.PreferencesGroup)
+			if !ok {
+				return
+			}
+
+			// Trigger now
+			triggerRow := adw.NewActionRow()
+			triggerRow.SetTitle("Trigger Job")
+			triggerRow.SetSubtitle("Create a job run from this CronJob immediately")
+			triggerBtn := gtk.NewButtonWithLabel("Run Now")
+			triggerBtn.AddCSSClass("suggested-action")
+			triggerBtn.SetVAlign(gtk.AlignCenter)
+			triggerBtn.ConnectClicked(func() {
+				job := &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        fmt.Sprintf("%s-manual-%d", cron.Name, time.Now().Unix()),
+						Namespace:   cron.Namespace,
+						Annotations: map[string]string{"cronjob.kubernetes.io/instantiate": "manual"},
+						Labels:      cron.Spec.JobTemplate.Labels,
+					},
+					Spec: cron.Spec.JobTemplate.Spec,
+				}
+				if err := e.Create(ctx, job); err != nil {
+					widget.ShowErrorDialog(ctx, "Failed to trigger job", err)
+					return
+				}
+				ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast(fmt.Sprintf("Job \"%s\" created", job.Name)))
+			})
+			triggerRow.AddSuffix(triggerBtn)
+			group.Add(triggerRow)
+
+			// Suspend / Resume
+			suspendRow := adw.NewActionRow()
+			if suspended {
+				suspendRow.SetTitle("CronJob is suspended")
+				suspendRow.SetSubtitle("No new jobs will be scheduled")
+				resumeBtn := gtk.NewButtonWithLabel("Resume")
+				resumeBtn.AddCSSClass("suggested-action")
+				resumeBtn.SetVAlign(gtk.AlignCenter)
+				resumeBtn.ConnectClicked(func() {
+					if err := e.Patch(ctx, cron, client.RawPatch(types.MergePatchType, []byte(`{"spec":{"suspend":false}}`))); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to resume CronJob", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("CronJob resumed"))
+				})
+				suspendRow.AddSuffix(resumeBtn)
+			} else {
+				suspendRow.SetTitle("CronJob is active")
+				suspendRow.SetSubtitle("Jobs are scheduled according to the cron expression")
+				suspendBtn := gtk.NewButtonWithLabel("Suspend")
+				suspendBtn.SetVAlign(gtk.AlignCenter)
+				suspendBtn.ConnectClicked(func() {
+					if err := e.Patch(ctx, cron, client.RawPatch(types.MergePatchType, []byte(`{"spec":{"suspend":true}}`))); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to suspend CronJob", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("CronJob suspended"))
+				})
+				suspendRow.AddSuffix(suspendBtn)
+			}
+			group.Add(suspendRow)
+		},
+	}
+}
+

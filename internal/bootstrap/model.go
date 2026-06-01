@@ -100,6 +100,14 @@ type K3sOptions struct {
 	// LocalBinaryPath, if set, overrides the curl-pipe install with a
 	// local k3s binary (air-gapped install).
 	LocalBinaryPath string
+
+	// UpdateSystem, when true, runs a full system package upgrade on each
+	// node before installing k3s.
+	UpdateSystem bool
+
+	// InstallDocker, when true, installs Docker CE via the official
+	// convenience script (https://get.docker.com) on each node.
+	InstallDocker bool
 }
 
 // BootstrapDraft is the in-memory model the wizard mutates as the user

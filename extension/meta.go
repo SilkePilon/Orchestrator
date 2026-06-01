@@ -2,13 +2,17 @@ package extension
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/SilkePilon/Orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
 	"github.com/SilkePilon/Orchestrator/internal/util"
+	"github.com/SilkePilon/Orchestrator/widget"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gdk/v4"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/diamondburned/gotk4/pkg/pango"
@@ -101,13 +105,112 @@ func (e *Meta) CreateColumns(ctx context.Context, resource *metav1.APIResource, 
 }
 
 func (e *Meta) CreateObjectProperties(ctx context.Context, resource *metav1.APIResource, object client.Object, props []api.Property) []api.Property {
+	readOnly := e.ClusterPreferences.Value().ReadOnly
+
 	var labels []api.Property
 	for key, value := range object.GetLabels() {
-		labels = append(labels, &api.TextProperty{Name: key, Value: value})
+		key, value := key, value
+		prop := &api.TextProperty{Name: key, Value: value}
+		if !readOnly {
+			prop.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+				row, ok := w.(*adw.ActionRow)
+				if !ok {
+					return
+				}
+				editBtn := gtk.NewButtonFromIconName("edit-symbolic")
+				editBtn.AddCSSClass("flat")
+				editBtn.SetVAlign(gtk.AlignCenter)
+				editBtn.SetTooltipText("Edit label")
+				editBtn.ConnectClicked(func() {
+					showEditDialog(ctx, "Edit Label: "+key, value, func(newVal string) {
+						patchData, _ := json.Marshal(map[string]any{
+							"metadata": map[string]any{
+								"labels": map[string]any{key: newVal},
+							},
+						})
+						if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+							widget.ShowErrorDialog(ctx, "Failed to update label", err)
+							return
+						}
+						ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Label updated"))
+					})
+				})
+				row.AddSuffix(editBtn)
+
+				deleteBtn := gtk.NewButtonFromIconName("edit-delete-symbolic")
+				deleteBtn.AddCSSClass("flat")
+				deleteBtn.AddCSSClass("error")
+				deleteBtn.SetVAlign(gtk.AlignCenter)
+				deleteBtn.SetTooltipText("Remove label")
+				deleteBtn.ConnectClicked(func() {
+					patchData, _ := json.Marshal(map[string]any{
+						"metadata": map[string]any{
+							"labels": map[string]any{key: nil},
+						},
+					})
+					if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to remove label", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Label removed"))
+				})
+				row.AddSuffix(deleteBtn)
+			}
+		}
+		labels = append(labels, prop)
 	}
+
 	var annotations []api.Property
 	for key, value := range object.GetAnnotations() {
-		annotations = append(annotations, &api.TextProperty{Name: key, Value: value})
+		key, value := key, value
+		prop := &api.TextProperty{Name: key, Value: value}
+		if !readOnly {
+			prop.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+				row, ok := w.(*adw.ActionRow)
+				if !ok {
+					return
+				}
+				editBtn := gtk.NewButtonFromIconName("edit-symbolic")
+				editBtn.AddCSSClass("flat")
+				editBtn.SetVAlign(gtk.AlignCenter)
+				editBtn.SetTooltipText("Edit annotation")
+				editBtn.ConnectClicked(func() {
+					showEditDialog(ctx, "Edit Annotation: "+key, value, func(newVal string) {
+						patchData, _ := json.Marshal(map[string]any{
+							"metadata": map[string]any{
+								"annotations": map[string]any{key: newVal},
+							},
+						})
+						if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+							widget.ShowErrorDialog(ctx, "Failed to update annotation", err)
+							return
+						}
+						ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Annotation updated"))
+					})
+				})
+				row.AddSuffix(editBtn)
+
+				deleteBtn := gtk.NewButtonFromIconName("edit-delete-symbolic")
+				deleteBtn.AddCSSClass("flat")
+				deleteBtn.AddCSSClass("error")
+				deleteBtn.SetVAlign(gtk.AlignCenter)
+				deleteBtn.SetTooltipText("Remove annotation")
+				deleteBtn.ConnectClicked(func() {
+					patchData, _ := json.Marshal(map[string]any{
+						"metadata": map[string]any{
+							"annotations": map[string]any{key: nil},
+						},
+					})
+					if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to remove annotation", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Annotation removed"))
+				})
+				row.AddSuffix(deleteBtn)
+			}
+		}
+		annotations = append(annotations, prop)
 	}
 	var owners []api.Property
 	for _, ref := range object.GetOwnerReferences() {
@@ -153,14 +256,8 @@ func (e *Meta) CreateObjectProperties(ctx context.Context, resource *metav1.APIR
 			// 	Name:  "Group",
 			// 	Value: group,
 			// },
-			&api.GroupProperty{
-				Name:     "Labels",
-				Children: labels,
-			},
-			&api.GroupProperty{
-				Name:     "Annotations",
-				Children: annotations,
-			},
+			e.labelsGroup(ctx, object, labels, readOnly),
+			e.annotationsGroup(ctx, object, annotations, readOnly),
 			&api.GroupProperty{
 				Name:     "Owners",
 				Children: owners,
@@ -206,4 +303,83 @@ func lookupForwardedPort(cluster *api.Cluster, object client.Object) (uint16, bo
 		return pf.LocalPortForDeployment(nn)
 	}
 	return 0, false
+}
+
+// labelsGroup returns the Labels GroupProperty with optional add/edit/delete actions.
+func (e *Meta) labelsGroup(ctx context.Context, object client.Object, labels []api.Property, readOnly bool) *api.GroupProperty {
+	g := &api.GroupProperty{Name: "Labels", Children: labels}
+	if !readOnly {
+		g.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+			row, ok := w.(*adw.ExpanderRow)
+			if !ok {
+				return
+			}
+			row.SetSensitive(true)
+			addBtn := gtk.NewButtonFromIconName("list-add-symbolic")
+			addBtn.AddCSSClass("flat")
+			addBtn.SetVAlign(gtk.AlignCenter)
+			addBtn.SetTooltipText("Add label")
+			addBtn.ConnectClicked(func() {
+				showAddPairDialog(ctx, "Add Label", "key", "value", func(k, v string) {
+					patchData, _ := json.Marshal(map[string]any{
+						"metadata": map[string]any{
+							"labels": map[string]any{k: v},
+						},
+					})
+					if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to add label", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Label added"))
+				})
+			})
+			row.AddSuffix(addBtn)
+		}
+	}
+	return g
+}
+
+// annotationsGroup returns the Annotations GroupProperty with optional add/edit/delete actions.
+func (e *Meta) annotationsGroup(ctx context.Context, object client.Object, annotations []api.Property, readOnly bool) *api.GroupProperty {
+	g := &api.GroupProperty{Name: "Annotations", Children: annotations}
+	if !readOnly {
+		g.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+			row, ok := w.(*adw.ExpanderRow)
+			if !ok {
+				return
+			}
+			row.SetSensitive(true)
+			addBtn := gtk.NewButtonFromIconName("list-add-symbolic")
+			addBtn.AddCSSClass("flat")
+			addBtn.SetVAlign(gtk.AlignCenter)
+			addBtn.SetTooltipText("Add annotation")
+			addBtn.ConnectClicked(func() {
+				showAddPairDialog(ctx, "Add Annotation", "key", "value", func(k, v string) {
+					patchData, _ := json.Marshal(map[string]any{
+						"metadata": map[string]any{
+							"annotations": map[string]any{k: v},
+						},
+					})
+					if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to add annotation", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Annotation added"))
+				})
+			})
+			row.AddSuffix(addBtn)
+		}
+	}
+	return g
+}
+
+// IsNodeControlPlane reports whether a Node carries the control-plane role
+// label (or its legacy "master" form).
+func IsNodeControlPlane(node *corev1.Node) bool {
+	for k := range node.Labels {
+		if k == "node-role.kubernetes.io/control-plane" || k == "node-role.kubernetes.io/master" {
+			return true
+		}
+	}
+	return false
 }

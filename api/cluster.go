@@ -55,6 +55,7 @@ type Cluster struct {
 	Scheme                 *runtime.Scheme
 	Encoder                *Encoder
 	Resources              []metav1.APIResource
+	Distribution           string // e.g. "k3s", or "" for generic Kubernetes
 	ctx                    context.Context
 	informerFactory        informers.SharedInformerFactory
 	dynamicInformerFactory dynamicinformer.DynamicSharedInformerFactory
@@ -152,6 +153,16 @@ func NewCluster(ctx context.Context, clusterPrefs pubsub.Property[ClusterPrefere
 		return resources[i].Kind[0] < resources[j].Kind[0]
 	})
 
+	// Detect distribution. Check the Bootstrap record first (always accurate
+	// for clusters we bootstrapped), then fall back to the server version
+	// string which k3s annotates with "+k3s<n>".
+	var distribution string
+	if bp := clusterPrefs.Value().Bootstrap; bp != nil && bp.Distribution != "" {
+		distribution = bp.Distribution
+	} else if sv, err := clientset.Discovery().ServerVersion(); err == nil && strings.Contains(sv.GitVersion, "k3s") {
+		distribution = "k3s"
+	}
+
 	cluster := Cluster{
 		Client:                 rclient,
 		Config:                 config,
@@ -165,6 +176,7 @@ func NewCluster(ctx context.Context, clusterPrefs pubsub.Property[ClusterPrefere
 		Events:                 newEvents(ctx, clientset),
 		ctx:                    ctx,
 		Resources:              resources,
+		Distribution:           distribution,
 		informerFactory:        informerFactory,
 		dynamicInformerFactory: dynamicInformerFactory,
 		sharedInformers:        map[schema.GroupVersionResource]informers.GenericInformer{},

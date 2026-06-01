@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
 )
 
 type nodesJSON struct {

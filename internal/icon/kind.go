@@ -97,6 +97,20 @@ func Kind(gvk schema.GroupVersionKind) *gtk.Image {
 		case "HelmRelease":
 			return gtk.NewImageFromIconName("package-x-generic-symbolic")
 		}
+	case "kustomize.toolkit.fluxcd.io":
+		switch gvk.Kind {
+		case "Kustomization":
+			return gtk.NewImageFromIconName("package-x-generic-symbolic")
+		}
+	case "argoproj.io":
+		switch gvk.Kind {
+		case "Application":
+			return gtk.NewImageFromIconName("globe-symbolic")
+		case "ApplicationSet":
+			return gtk.NewImageFromIconName("globe-symbolic")
+		case "AppProject":
+			return gtk.NewImageFromIconName("folder-symbolic")
+		}
 	case "source.toolkit.fluxcd.io":
 		switch gvk.Kind {
 		case "HelmChart":

@@ -3,12 +3,12 @@ package ui
 import (
 	"context"
 
-	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
-	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/SilkePilon/Orchestrator/api"
 	"github.com/SilkePilon/Orchestrator/internal/ctxt"
 	"github.com/SilkePilon/Orchestrator/internal/pubsub"
 	"github.com/SilkePilon/Orchestrator/internal/ui/common"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 )
 
 type PrefsWindow struct {
@@ -37,7 +37,7 @@ func NewPreferencesWindow(ctx context.Context, state *common.State) *PrefsWindow
 	stack := adw.NewViewStack()
 	generalPage := adw.NewBin()
 	generalPage.SetChild(w.createGeneralPage())
-	stack.AddTitled(generalPage, "general", "General")
+	stack.AddTitledWithIcon(generalPage, "general", "General", "preferences-system-symbolic")
 	content.Append(stack)
 	view.SetStack(stack)
 

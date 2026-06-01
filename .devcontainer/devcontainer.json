@@ -1,36 +1,56 @@
 {
-	"name": "Go",
-	"build": {
-		"dockerfile": "Dockerfile"
-	},
-	"runArgs": [
-		"--device=/dev/dri",
-		"--env=XDG_RUNTIME_DIR=${localEnv:XDG_RUNTIME_DIR}",
-		"--env=WAYLAND_DISPLAY=${localEnv:WAYLAND_DISPLAY}",
-		"--env=DBUS_SESSION_BUS_ADDRESS=unix:path=${localEnv:XDG_RUNTIME_DIR}/bus"
-	],
-	"mounts": [
-		"source=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},target=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},type=bind",
-		"source=${localEnv:XDG_RUNTIME_DIR}/bus,target=${localEnv:XDG_RUNTIME_DIR}/bus,type=bind"
-	],
-	"postCreateCommand": "sudo chown vscode:vscode $XDG_RUNTIME_DIR",
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				"golang.Go",
-				"bbenoist.Nix"
-			]
-		}
-	},
-	"features": {
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {
-			"enableNonRootDocker": "true",
-			"moby": "true"
-		},
-		"ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
-			"version": "latest",
-			"helm": "latest",
-			"minikube": "latest"
-		}
-	}
+  "name": "Seabird (Go + GTK)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "runArgs": [
+    "--device=/dev/dri",
+    "--env=XDG_RUNTIME_DIR=${localEnv:XDG_RUNTIME_DIR}",
+    "--env=WAYLAND_DISPLAY=${localEnv:WAYLAND_DISPLAY}",
+    "--env=DBUS_SESSION_BUS_ADDRESS=unix:path=${localEnv:XDG_RUNTIME_DIR}/bus"
+  ],
+  "mounts": [
+    "source=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},target=${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY},type=bind",
+    "source=${localEnv:XDG_RUNTIME_DIR}/bus,target=${localEnv:XDG_RUNTIME_DIR}/bus,type=bind",
+    "source=seabird-gomod-cache,target=/go/pkg/mod,type=volume",
+    "source=seabird-gobuild-cache,target=/home/vscode/.cache/go-build,type=volume"
+  ],
+  "containerEnv": {
+    "GOPATH": "/go",
+    "GOMODCACHE": "/go/pkg/mod",
+    "CGO_ENABLED": "1"
+  },
+  "postCreateCommand": "sudo chown -R vscode:vscode /go && sudo chown -R vscode:vscode /home/vscode/.cache/go-build && sudo chown vscode:vscode $XDG_RUNTIME_DIR && go mod download",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.Go",
+        "ms-azuretools.vscode-docker",
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "go.toolsManagement.autoUpdate": true,
+        "editor.formatOnSave": true,
+        "[go]": {
+          "editor.defaultFormatter": "golang.go"
+        }
+      }
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.26"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "enableNonRootDocker": "true",
+      "moby": "false"
+    },
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "version": "latest",
+      "helm": "latest",
+      "minikube": "latest"
+    }
+  }
 }

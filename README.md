@@ -201,3 +201,12 @@ Orchestrator is available under the terms of the Mozilla Public License v2, a
 copy of the license is distributed in the LICENSE file.
 
 Note: This is paid software with an unlimited free trial.
+
+## Credits
+
+Orchestrator was inspired by and built upon the foundation of
+[Seabird](https://github.com/getseabird/seabird), a beautiful Kubernetes IDE for
+the GNOME desktop. Seabird proved that a clean, native Linux Kubernetes client
+was both possible and desirable. Orchestrator started as a personal fork because
+the original project was great but lacked a way to quickly spin up a fresh
+cluster — the built-in k3s bootstrap wizard fills that gap.

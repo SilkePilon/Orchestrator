@@ -3,13 +3,15 @@ package single
 import (
 	"context"
 	"sort"
+	"time"
 
-	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
-	"github.com/diamondburned/gotk4/pkg/gdk/v4"
-	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/diamondburned/gotk4/pkg/pango"
 	"github.com/SilkePilon/Orchestrator/api"
 	"github.com/SilkePilon/Orchestrator/internal/pubsub"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	"github.com/diamondburned/gotk4/pkg/gdk/v4"
+	"github.com/diamondburned/gotk4/pkg/glib/v2"
+	"github.com/diamondburned/gotk4/pkg/gtk/v4"
+	"github.com/diamondburned/gotk4/pkg/pango"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -37,13 +39,32 @@ func (p *propertiesView) Render(ctx context.Context, level int, prop api.Propert
 				prop.Widget(row, single.navView)
 			}
 			if prop.Reference == nil {
+				iconStack := gtk.NewStack()
+				iconStack.SetTransitionType(gtk.StackTransitionTypeCrossfade)
+				iconStack.SetTransitionDuration(150)
+				iconStack.SetInterpolateSize(false)
+
+				copyImg := gtk.NewImageFromIconName("copy-symbolic")
+				checkImg := gtk.NewImageFromIconName("object-select-symbolic")
+				iconStack.AddNamed(copyImg, "copy")
+				iconStack.AddNamed(checkImg, "check")
+				iconStack.SetVisibleChildName("copy")
+
 				copy := gtk.NewButton()
-				copy.SetIconName("copy-symbolic")
+				copy.SetChild(iconStack)
 				copy.AddCSSClass("flat")
 				copy.AddCSSClass("dim-label")
 				copy.SetVAlign(gtk.AlignCenter)
 				copy.ConnectClicked(func() {
 					gdk.DisplayGetDefault().Clipboard().SetText(prop.Value)
+					iconStack.SetVisibleChildName("check")
+					copy.SetSensitive(false)
+					time.AfterFunc(2*time.Second, func() {
+						glib.IdleAdd(func() {
+							iconStack.SetVisibleChildName("copy")
+							copy.SetSensitive(true)
+						})
+					})
 				})
 				row.AddSuffix(copy)
 			} else {

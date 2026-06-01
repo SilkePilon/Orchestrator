@@ -4,13 +4,13 @@ import (
 	"context"
 	"os"
 
-	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
-	"github.com/diamondburned/gotk4/pkg/gio/v2"
-	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/SilkePilon/Orchestrator/api"
 	"github.com/SilkePilon/Orchestrator/internal/icon"
 	"github.com/SilkePilon/Orchestrator/internal/style"
 	"github.com/SilkePilon/Orchestrator/internal/ui/common"
+	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
+	"github.com/diamondburned/gotk4/pkg/gio/v2"
+	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"k8s.io/klog/v2"
 )
 
@@ -57,6 +57,14 @@ func NewApplication(version string) (*Application, error) {
 	}
 
 	a.ConnectActivate(func() {
+		if backgroundHeld {
+			// Restore from background: release the hold and show all windows.
+			leaveBackground(&a.Application.Application)
+			for _, w := range a.Windows() {
+				w.Present()
+			}
+			return
+		}
 		NewWelcomeWindow(ctx, &a.Application.Application, state).Present()
 	})
 

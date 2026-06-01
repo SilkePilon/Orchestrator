@@ -5,6 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/SilkePilon/Orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
+	"github.com/SilkePilon/Orchestrator/internal/pubsub"
+	"github.com/SilkePilon/Orchestrator/internal/util"
+	"github.com/SilkePilon/Orchestrator/widget"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4-sourceview/pkg/gtksource/v5"
 	"github.com/diamondburned/gotk4/pkg/gdk/v4"
@@ -13,11 +18,6 @@ import (
 	"github.com/hexops/gotextdiff"
 	"github.com/hexops/gotextdiff/myers"
 	"github.com/hexops/gotextdiff/span"
-	"github.com/SilkePilon/Orchestrator/api"
-	"github.com/SilkePilon/Orchestrator/internal/ctxt"
-	"github.com/SilkePilon/Orchestrator/internal/pubsub"
-	"github.com/SilkePilon/Orchestrator/internal/util"
-	"github.com/SilkePilon/Orchestrator/widget"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

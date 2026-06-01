@@ -3,9 +3,9 @@ package widget
 import (
 	"context"
 
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/SilkePilon/Orchestrator/internal/ctxt"
 )
 
 func ShowErrorDialog(ctx context.Context, title string, err error) *adw.AlertDialog {

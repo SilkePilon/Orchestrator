@@ -6,16 +6,17 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/SilkePilon/Orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
+	"github.com/SilkePilon/Orchestrator/internal/ui/common"
+	"github.com/SilkePilon/Orchestrator/internal/ui/editor"
+	"github.com/SilkePilon/Orchestrator/internal/util"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/core/gioutil"
 	coreglib "github.com/diamondburned/gotk4/pkg/core/glib"
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	"github.com/SilkePilon/Orchestrator/api"
-	"github.com/SilkePilon/Orchestrator/internal/ui/common"
-	"github.com/SilkePilon/Orchestrator/internal/ui/editor"
-	"github.com/SilkePilon/Orchestrator/internal/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -94,7 +95,14 @@ func (l *List) onSelectedResourceChange(resource *metav1.APIResource) {
 	}
 	var ctx context.Context
 	ctx, l.watchCancel = context.WithCancel(l.ctx)
-	api.InformerConnectProperty(ctx, l.Cluster, util.GVRForResource(resource), l.Objects)
+	if err := api.InformerConnectProperty(ctx, l.Cluster, util.GVRForResource(resource), l.Objects); err != nil {
+		klog.Warningf("watch %s: %v", resource.Name, err)
+		glib.IdleAdd(func() {
+			toast := adw.NewToast(fmt.Sprintf("Cannot watch %s: %v", resource.Kind, err))
+			toast.SetTimeout(4)
+			ctxt.MustFrom[*adw.ToastOverlay](l.ctx).AddToast(toast)
+		})
+	}
 }
 
 func (l *List) onObjectsChange(objects []client.Object) {

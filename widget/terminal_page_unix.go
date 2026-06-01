@@ -9,12 +9,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/SilkePilon/Orchestrator/api"
 	"github.com/creack/pty"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	"github.com/jgillich/gotk4-vte/pkg/vte/v3"
-	"github.com/SilkePilon/Orchestrator/api"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -80,7 +80,7 @@ func NewTerminalPage(ctx context.Context, cluster *api.Cluster, pod *corev1.Pod,
 			})
 		}()
 
-		if err := podExec(ctx, cluster, pod, container, []string{"/bin/sh"}, tty, tty, tty, nil); err != nil {
+		if err := podExec(ctx, cluster, pod, container, []string{"env", "TERM=xterm-256color", "/bin/sh"}, tty, tty, tty, nil); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				glib.IdleAdd(func() {
 					ShowErrorDialog(ctx, "Exec failed", err)

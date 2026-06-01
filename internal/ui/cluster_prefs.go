@@ -211,6 +211,15 @@ func (p *ClusterPrefPage) createActions() *adw.PreferencesGroup {
 						p.Preferences.Pub(prefs)
 						p.Parent().(*adw.NavigationView).Pop()
 					}
+					// If the prefs window is transient for a cluster window (i.e.
+					// the user ran uninstall while the cluster was open), activate
+					// the disconnect action so the cluster window cancels its
+					// context and closes itself.
+					if win, ok := ctxt.From[*gtk.Window](p.ctx); ok {
+						if parent := win.TransientFor(); parent != nil {
+							parent.ActivateAction("disconnect", nil)
+						}
+					}
 				})
 				p.Parent().(*adw.NavigationView).Push(wizard.NavigationPage)
 			})

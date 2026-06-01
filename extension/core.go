@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/SilkePilon/Orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/internal/ctxt"
 	"github.com/SilkePilon/Orchestrator/internal/style"
 	"github.com/SilkePilon/Orchestrator/internal/util"
 	"github.com/SilkePilon/Orchestrator/widget"
@@ -163,6 +164,37 @@ func (e *Core) CreateColumns(ctx context.Context, res *metav1.APIResource, colum
 	case corev1.SchemeGroupVersion.WithResource("nodes").String():
 		columns = append(columns,
 			api.Column{
+				Name:     "Role",
+				Priority: 90,
+				Bind: func(cell api.Cell, object client.Object) {
+					node := object.(*corev1.Node)
+					badge := gtk.NewLabel("")
+					badge.AddCSSClass("pill")
+					badge.AddCSSClass("caption")
+					badge.SetHAlign(gtk.AlignStart)
+					badge.SetVAlign(gtk.AlignCenter)
+					if IsNodeControlPlane(node) {
+						badge.SetText("Control Plane")
+						badge.AddCSSClass("success")
+					} else {
+						badge.SetText("Worker")
+						badge.AddCSSClass("accent")
+					}
+					cell.SetChild(badge)
+				},
+				Compare: func(a, b client.Object) int {
+					na, nb := a.(*corev1.Node), b.(*corev1.Node)
+					ca, cb := IsNodeControlPlane(na), IsNodeControlPlane(nb)
+					if ca == cb {
+						return 0
+					}
+					if ca {
+						return -1
+					}
+					return 1
+				},
+			},
+			api.Column{
 				Name:     "Status",
 				Priority: 70,
 				Bind: func(cell api.Cell, object client.Object) {
@@ -280,6 +312,7 @@ func (e *Core) CreateColumns(ctx context.Context, res *metav1.APIResource, colum
 func (e *Core) CreateObjectProperties(ctx context.Context, apiResource *metav1.APIResource, object client.Object, props []api.Property) []api.Property {
 	switch object := object.(type) {
 	case *corev1.Pod:
+		props = append(props, e.podActionsProperty(ctx, object))
 		var containers []api.Property
 
 		for i, container := range object.Spec.Containers {
@@ -461,17 +494,165 @@ func (e *Core) CreateObjectProperties(ctx context.Context, apiResource *metav1.A
 	case *appsv1.DaemonSet:
 		props = append(props, e.aggregatedLogsProperty(ctx, "DaemonSet Logs", object.Namespace, object.Spec.Selector))
 	case *corev1.ConfigMap:
+		readOnly := e.ClusterPreferences.Value().ReadOnly
 		var data []api.Property
 		for key, value := range object.Data {
-			data = append(data, &api.TextProperty{Name: key, Value: value})
+			key, value := key, value
+			prop := &api.TextProperty{Name: key, Value: value}
+			if !readOnly {
+				prop.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+					row, ok := w.(*adw.ActionRow)
+					if !ok {
+						return
+					}
+					editBtn := gtk.NewButtonFromIconName("edit-symbolic")
+					editBtn.AddCSSClass("flat")
+					editBtn.SetVAlign(gtk.AlignCenter)
+					editBtn.SetTooltipText("Edit value")
+					editBtn.ConnectClicked(func() {
+						showEditDialog(ctx, "Edit "+key, value, func(newVal string) {
+							patchData, _ := json.Marshal(map[string]any{"data": map[string]any{key: newVal}})
+							if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+								widget.ShowErrorDialog(ctx, "Failed to update key", err)
+								return
+							}
+							ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Key updated"))
+						})
+					})
+					row.AddSuffix(editBtn)
+
+					delBtn := gtk.NewButtonFromIconName("edit-delete-symbolic")
+					delBtn.AddCSSClass("flat")
+					delBtn.AddCSSClass("error")
+					delBtn.SetVAlign(gtk.AlignCenter)
+					delBtn.SetTooltipText("Delete key")
+					delBtn.ConnectClicked(func() {
+						dialog := adw.NewAlertDialog("Delete Key?", fmt.Sprintf("Remove \"  %s\" from %s?", key, object.Name))
+						dialog.AddResponse("cancel", "Cancel")
+						dialog.AddResponse("delete", "Delete")
+						dialog.SetResponseAppearance("delete", adw.ResponseDestructive)
+						dialog.ConnectResponse(func(r string) {
+							if r != "delete" {
+								return
+							}
+							patchData, _ := json.Marshal(map[string]any{"data": map[string]any{key: nil}})
+							if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+								widget.ShowErrorDialog(ctx, "Failed to delete key", err)
+								return
+							}
+							ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Key deleted"))
+						})
+						dialog.Present(ctxt.MustFrom[*gtk.Window](ctx))
+					})
+					row.AddSuffix(delBtn)
+				}
+			}
+			data = append(data, prop)
 		}
-		props = append(props, &api.GroupProperty{Name: "Data", Children: data})
+		dataGroup := &api.GroupProperty{Name: "Data", Children: data}
+		if !readOnly {
+			dataGroup.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+				g, ok := w.(*adw.PreferencesGroup)
+				if !ok {
+					return
+				}
+				addBtn := gtk.NewButtonWithLabel("Add Key")
+				addBtn.AddCSSClass("flat")
+				addBtn.ConnectClicked(func() {
+					showAddPairDialog(ctx, "Add Key", "key", "value", func(k, v string) {
+						patchData, _ := json.Marshal(map[string]any{"data": map[string]any{k: v}})
+						if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+							widget.ShowErrorDialog(ctx, "Failed to add key", err)
+							return
+						}
+						ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Key added"))
+					})
+				})
+				g.SetHeaderSuffix(addBtn)
+			}
+		}
+		props = append(props, dataGroup)
 	case *corev1.Secret:
+		readOnly := e.ClusterPreferences.Value().ReadOnly
 		var data []api.Property
 		for key, value := range object.Data {
-			data = append(data, &api.TextProperty{Name: key, Value: string(value)})
+			key, value := key, value
+			displayVal := string(value)
+			prop := &api.TextProperty{Name: key, Value: displayVal}
+			if !readOnly {
+				prop.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+					row, ok := w.(*adw.ActionRow)
+					if !ok {
+						return
+					}
+					editBtn := gtk.NewButtonFromIconName("edit-symbolic")
+					editBtn.AddCSSClass("flat")
+					editBtn.SetVAlign(gtk.AlignCenter)
+					editBtn.SetTooltipText("Edit value")
+					editBtn.ConnectClicked(func() {
+						showEditDialog(ctx, "Edit "+key, displayVal, func(newVal string) {
+							// json.Marshal encodes []byte as base64 automatically
+							patchData, _ := json.Marshal(map[string]any{"data": map[string]any{key: []byte(newVal)}})
+							if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+								widget.ShowErrorDialog(ctx, "Failed to update secret key", err)
+								return
+							}
+							ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Secret key updated"))
+						})
+					})
+					row.AddSuffix(editBtn)
+
+					delBtn := gtk.NewButtonFromIconName("edit-delete-symbolic")
+					delBtn.AddCSSClass("flat")
+					delBtn.AddCSSClass("error")
+					delBtn.SetVAlign(gtk.AlignCenter)
+					delBtn.SetTooltipText("Delete key")
+					delBtn.ConnectClicked(func() {
+						dialog := adw.NewAlertDialog("Delete Key?", fmt.Sprintf("Remove \"%s\" from %s?", key, object.Name))
+						dialog.AddResponse("cancel", "Cancel")
+						dialog.AddResponse("delete", "Delete")
+						dialog.SetResponseAppearance("delete", adw.ResponseDestructive)
+						dialog.ConnectResponse(func(r string) {
+							if r != "delete" {
+								return
+							}
+							patchData, _ := json.Marshal(map[string]any{"data": map[string]any{key: nil}})
+							if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+								widget.ShowErrorDialog(ctx, "Failed to delete secret key", err)
+								return
+							}
+							ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Secret key deleted"))
+						})
+						dialog.Present(ctxt.MustFrom[*gtk.Window](ctx))
+					})
+					row.AddSuffix(delBtn)
+				}
+			}
+			data = append(data, prop)
 		}
-		props = append(props, &api.GroupProperty{Name: "Data", Children: data})
+		dataGroup := &api.GroupProperty{Name: "Data", Children: data}
+		if !readOnly {
+			dataGroup.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+				g, ok := w.(*adw.PreferencesGroup)
+				if !ok {
+					return
+				}
+				addBtn := gtk.NewButtonWithLabel("Add Key")
+				addBtn.AddCSSClass("flat")
+				addBtn.ConnectClicked(func() {
+					showAddPairDialog(ctx, "Add Secret Key", "key", "value", func(k, v string) {
+						patchData, _ := json.Marshal(map[string]any{"data": map[string]any{k: []byte(v)}})
+						if err := e.Patch(ctx, object, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+							widget.ShowErrorDialog(ctx, "Failed to add secret key", err)
+							return
+						}
+						ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Secret key added"))
+					})
+				})
+				g.SetHeaderSuffix(addBtn)
+			}
+		}
+		props = append(props, dataGroup)
 	case *corev1.Service:
 		var ports []api.Property
 		for _, p := range object.Spec.Ports {
@@ -524,6 +705,7 @@ func (e *Core) CreateObjectProperties(ctx context.Context, apiResource *metav1.A
 		props = append(props, group)
 
 	case *corev1.Node:
+		props = append(props, e.nodeActionsProperty(ctx, object))
 		infoProp := &api.GroupProperty{Name: "Info"}
 		mem := object.Status.Allocatable.Memory()
 		mem.RoundUp(resource.Mega)
@@ -563,6 +745,8 @@ func (e *Core) CreateObjectProperties(ctx context.Context, apiResource *metav1.A
 		)
 		props = append(props, infoProp)
 
+		props = append(props, e.nodeTaintsProperty(ctx, object))
+
 		podsProp := &api.GroupProperty{Name: "Pods"}
 		var pods corev1.PodList
 		e.List(ctx, &pods, client.MatchingFieldsSelector{Selector: fields.OneTermEqualSelector("spec.nodeName", object.Name)})
@@ -584,6 +768,253 @@ func (e *Core) CreateObjectProperties(ctx context.Context, apiResource *metav1.A
 	}
 
 	return append(props, e.resourceDiffProperty(ctx, apiResource, object))
+}
+
+func (e *Core) podActionsProperty(ctx context.Context, pod *corev1.Pod) api.Property {
+	hasController := len(pod.OwnerReferences) > 0
+	return &api.GroupProperty{
+		ID:       "actions",
+		Priority: 100,
+		Name:     "Actions",
+		Widget: func(w gtk.Widgetter, _ *adw.NavigationView) {
+			group, ok := w.(*adw.PreferencesGroup)
+			if !ok {
+				return
+			}
+			row := adw.NewActionRow()
+			row.SetTitle("Recreate Pod")
+			if hasController {
+				row.SetSubtitle("Delete this pod — its controller will create a replacement")
+			} else {
+				row.SetSubtitle("Permanently delete this pod")
+			}
+			btn := gtk.NewButtonWithLabel("Recreate")
+			btn.AddCSSClass("destructive-action")
+			btn.SetVAlign(gtk.AlignCenter)
+			btn.ConnectClicked(func() {
+				body := fmt.Sprintf("Delete pod \"%s\"?", pod.Name)
+				if hasController {
+					body = fmt.Sprintf("Delete pod \"%s\"? Its controller will create a new one.", pod.Name)
+				}
+				dialog := adw.NewAlertDialog("Recreate Pod?", body)
+				dialog.AddResponse("cancel", "Cancel")
+				dialog.AddResponse("recreate", "Delete & Recreate")
+				dialog.SetResponseAppearance("recreate", adw.ResponseDestructive)
+				dialog.ConnectResponse(func(response string) {
+					if response != "recreate" {
+						return
+					}
+					if err := e.Delete(ctx, pod); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to delete pod", err)
+					}
+				})
+				dialog.Present(ctxt.MustFrom[*gtk.Window](ctx))
+			})
+			row.AddSuffix(btn)
+			group.Add(row)
+		},
+	}
+}
+
+func (e *Core) nodeActionsProperty(ctx context.Context, node *corev1.Node) api.Property {
+	return &api.GroupProperty{
+		ID:       "actions",
+		Priority: 100,
+		Name:     "Actions",
+		Widget: func(w gtk.Widgetter, _ *adw.NavigationView) {
+			group, ok := w.(*adw.PreferencesGroup)
+			if !ok {
+				return
+			}
+
+			// Cordon / Uncordon
+			cordonRow := adw.NewActionRow()
+			if node.Spec.Unschedulable {
+				cordonRow.SetTitle("Node is cordoned")
+				cordonRow.SetSubtitle("New pods cannot be scheduled on this node")
+				btn := gtk.NewButtonWithLabel("Uncordon")
+				btn.AddCSSClass("suggested-action")
+				btn.SetVAlign(gtk.AlignCenter)
+				btn.ConnectClicked(func() {
+					if err := e.Patch(ctx, node, client.RawPatch(types.MergePatchType, []byte(`{"spec":{"unschedulable":false}}`))); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to uncordon node", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Node uncordoned"))
+				})
+				cordonRow.AddSuffix(btn)
+			} else {
+				cordonRow.SetTitle("Scheduling enabled")
+				cordonRow.SetSubtitle("New pods can be scheduled on this node")
+				btn := gtk.NewButtonWithLabel("Cordon")
+				btn.SetVAlign(gtk.AlignCenter)
+				btn.ConnectClicked(func() {
+					if err := e.Patch(ctx, node, client.RawPatch(types.MergePatchType, []byte(`{"spec":{"unschedulable":true}}`))); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to cordon node", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Node cordoned"))
+				})
+				cordonRow.AddSuffix(btn)
+			}
+			group.Add(cordonRow)
+
+			// Drain
+			drainRow := adw.NewActionRow()
+			drainRow.SetTitle("Drain Node")
+			drainRow.SetSubtitle("Cordon and evict all non-DaemonSet pods")
+			drainBtn := gtk.NewButtonWithLabel("Drain")
+			drainBtn.AddCSSClass("destructive-action")
+			drainBtn.SetVAlign(gtk.AlignCenter)
+			drainBtn.ConnectClicked(func() {
+				dialog := adw.NewAlertDialog(
+					"Drain node?",
+					fmt.Sprintf("All pods on \"%s\" will be evicted and the node will be cordoned.", node.Name),
+				)
+				dialog.AddResponse("cancel", "Cancel")
+				dialog.AddResponse("drain", "Drain")
+				dialog.SetResponseAppearance("drain", adw.ResponseDestructive)
+				dialog.ConnectResponse(func(response string) {
+					if response != "drain" {
+						return
+					}
+					if err := e.Patch(ctx, node, client.RawPatch(types.MergePatchType, []byte(`{"spec":{"unschedulable":true}}`))); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to cordon node during drain", err)
+						return
+					}
+					var pods corev1.PodList
+					e.List(ctx, &pods, client.MatchingFieldsSelector{Selector: fields.OneTermEqualSelector("spec.nodeName", node.Name)})
+					var failed int
+					for i := range pods.Items {
+						pod := &pods.Items[i]
+						isDaemonSet := false
+						for _, owner := range pod.OwnerReferences {
+							if owner.Kind == "DaemonSet" {
+								isDaemonSet = true
+								break
+							}
+						}
+						if !isDaemonSet {
+							if err := e.Delete(ctx, pod); err != nil {
+								failed++
+							}
+						}
+					}
+					if failed > 0 {
+						ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast(fmt.Sprintf("Drain complete (%d pods failed to evict)", failed)))
+					} else {
+						ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Node drained successfully"))
+					}
+				})
+				dialog.Present(ctxt.MustFrom[*gtk.Window](ctx))
+			})
+			drainRow.AddSuffix(drainBtn)
+			group.Add(drainRow)
+		},
+	}
+}
+
+func (e *Core) nodeTaintsProperty(ctx context.Context, node *corev1.Node) api.Property {
+	readOnly := e.ClusterPreferences.Value().ReadOnly
+	var taintProps []api.Property
+	for i, taint := range node.Spec.Taints {
+		i, taint := i, taint
+		label := taint.Key
+		if taint.Value != "" {
+			label = taint.Key + "=" + taint.Value
+		}
+		prop := &api.TextProperty{Name: label, Value: string(taint.Effect)}
+		if !readOnly {
+			prop.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+				row, ok := w.(*adw.ActionRow)
+				if !ok {
+					return
+				}
+				delBtn := gtk.NewButtonFromIconName("edit-delete-symbolic")
+				delBtn.AddCSSClass("flat")
+				delBtn.AddCSSClass("error")
+				delBtn.SetVAlign(gtk.AlignCenter)
+				delBtn.SetTooltipText("Remove taint")
+				delBtn.ConnectClicked(func() {
+					var newTaints []corev1.Taint
+					for j, t := range node.Spec.Taints {
+						if j != i {
+							newTaints = append(newTaints, t)
+						}
+					}
+					patchData, _ := json.Marshal(map[string]any{
+						"spec": map[string]any{"taints": newTaints},
+					})
+					if err := e.Patch(ctx, node, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to remove taint", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Taint removed"))
+				})
+				row.AddSuffix(delBtn)
+			}
+		}
+		taintProps = append(taintProps, prop)
+	}
+
+	taintsGroup := &api.GroupProperty{Name: "Taints", Children: taintProps}
+	if !readOnly {
+		taintsGroup.Widget = func(w gtk.Widgetter, _ *adw.NavigationView) {
+			g, ok := w.(*adw.PreferencesGroup)
+			if !ok {
+				return
+			}
+			addBtn := gtk.NewButtonWithLabel("Add Taint")
+			addBtn.AddCSSClass("flat")
+			addBtn.ConnectClicked(func() {
+				showAddTaintDialog(ctx, func(key, value string, effect corev1.TaintEffect) {
+					newTaints := append(node.Spec.Taints, corev1.Taint{Key: key, Value: value, Effect: effect})
+					patchData, _ := json.Marshal(map[string]any{
+						"spec": map[string]any{"taints": newTaints},
+					})
+					if err := e.Patch(ctx, node, client.RawPatch(types.MergePatchType, patchData)); err != nil {
+						widget.ShowErrorDialog(ctx, "Failed to add taint", err)
+						return
+					}
+					ctxt.MustFrom[*adw.ToastOverlay](ctx).AddToast(adw.NewToast("Taint added"))
+				})
+			})
+			g.SetHeaderSuffix(addBtn)
+		}
+	}
+	return taintsGroup
+}
+
+func showAddTaintDialog(ctx context.Context, onAdd func(key, value string, effect corev1.TaintEffect)) {
+	effects := []string{"NoSchedule", "PreferNoSchedule", "NoExecute"}
+
+	dialog := adw.NewAlertDialog("Add Taint", "")
+
+	keyEntry := gtk.NewEntry()
+	keyEntry.SetPlaceholderText("Key (e.g. dedicated)")
+
+	valueEntry := gtk.NewEntry()
+	valueEntry.SetPlaceholderText("Value (optional)")
+
+	effectDrop := gtk.NewDropDownFromStrings(effects)
+
+	box := gtk.NewBox(gtk.OrientationVertical, 8)
+	box.SetMarginTop(4)
+	box.Append(keyEntry)
+	box.Append(valueEntry)
+	box.Append(effectDrop)
+	dialog.SetExtraChild(box)
+
+	dialog.AddResponse("cancel", "Cancel")
+	dialog.AddResponse("add", "Add Taint")
+	dialog.SetDefaultResponse("add")
+	dialog.SetResponseAppearance("add", adw.ResponseSuggested)
+	dialog.ConnectResponse(func(response string) {
+		if response == "add" && keyEntry.Text() != "" {
+			onAdd(keyEntry.Text(), valueEntry.Text(), corev1.TaintEffect(effects[effectDrop.Selected()]))
+		}
+	})
+	dialog.Present(ctxt.MustFrom[*gtk.Window](ctx))
 }
 
 func (e *Core) aggregatedLogsProperty(ctx context.Context, title, namespace string, selector *metav1.LabelSelector) api.Property {

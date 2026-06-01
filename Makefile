@@ -28,6 +28,14 @@ release:
 	git commit -m "$$($(SEMVER) get release)"
 	git tag -a -m "$$($(SEMVER) get release)" "$$($(SEMVER) get release)"
 
+.PHONY: build
+build:
+	GOMEMLIMIT=2GiB go build -p 1 ./...
+
+.PHONY: flatpak-sources
+flatpak-sources:
+	python3 hack/gen-flatpak-go-sources.py go.sum flatpak-go-sources.json
+
 .PHONY: flatpak-validate
 flatpak-validate:
 	desktop-file-validate $(APP_ID).desktop

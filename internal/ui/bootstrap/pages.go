@@ -7,13 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
+	"github.com/SilkePilon/Orchestrator/widget"
 	"github.com/diamondburned/gotk4-adwaita/pkg/adw"
 	"github.com/diamondburned/gotk4/pkg/gio/v2"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
-	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
-	"github.com/SilkePilon/Orchestrator/widget"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -62,6 +63,22 @@ func (w *Wizard) intro() *adw.NavigationPage {
 	}
 	general.Add(cni)
 
+	setup := adw.NewPreferencesGroup()
+	setup.SetTitle("Node Setup")
+	page.Add(setup)
+
+	updateSystem := adw.NewSwitchRow()
+	updateSystem.SetTitle("Update system packages")
+	updateSystem.SetSubtitle("Run a full package upgrade on each node before installing (apt / dnf / yum / zypper / pacman / apk)")
+	updateSystem.SetActive(d.Options.UpdateSystem)
+	setup.Add(updateSystem)
+
+	installDocker := adw.NewSwitchRow()
+	installDocker.SetTitle("Install Docker CE")
+	installDocker.SetSubtitle("Install Docker on each node via get.docker.com before installing k3s")
+	installDocker.SetActive(d.Options.InstallDocker)
+	setup.Add(installDocker)
+
 	advanced := adw.NewPreferencesGroup()
 	advanced.SetTitle("Advanced")
 	page.Add(advanced)
@@ -92,6 +109,8 @@ func (w *Wizard) intro() *adw.NavigationPage {
 		d.Options.Channel = []string{"stable", "latest", "testing"}[channel.Selected()]
 		d.Options.Version = strings.TrimSpace(version.Text())
 		d.Options.CNI = []string{"flannel", "none"}[cni.Selected()]
+		d.Options.UpdateSystem = updateSystem.Active()
+		d.Options.InstallDocker = installDocker.Active()
 		d.Options.DisableComponents = splitTrim(disable.Text(), ",")
 		d.Options.ClusterCIDR = strings.TrimSpace(clusterCIDR.Text())
 		d.Options.ServiceCIDR = strings.TrimSpace(serviceCIDR.Text())
@@ -360,37 +379,82 @@ func (w *Wizard) nodeGroup(n *core.Node, commit func(), remove func()) *adw.Pref
 // ---------- Probe page --------------------------------------------------
 
 func (w *Wizard) probePage() *adw.NavigationPage {
-	body := gtk.NewBox(gtk.OrientationVertical, 12)
-	body.SetMarginTop(12)
-	body.SetMarginBottom(12)
-	body.SetMarginStart(12)
-	body.SetMarginEnd(12)
+	// Build the page manually so we can put a live WindowTitle in the
+	// header bar and a pulsing progress bar in a bottom ActionBar — the
+	// same GNOME pattern used on the Apply page.
+	pageBox := gtk.NewBox(gtk.OrientationVertical, 0)
+	navPage := adw.NewNavigationPage(pageBox, "Probe")
 
-	banner := adw.NewBanner("Inspecting nodes…")
-	banner.SetRevealed(true)
-	body.Append(banner)
-
-	scroll := gtk.NewScrolledWindow()
-	scroll.SetVExpand(true)
-	body.Append(scroll)
-
-	page := adw.NewPreferencesPage()
-	scroll.SetChild(page)
-
-	results := adw.NewPreferencesGroup()
-	page.Add(results)
+	titleWidget := adw.NewWindowTitle("Probe", "Inspecting nodes…")
 
 	reprobe := gtk.NewButtonFromIconName("view-refresh-symbolic")
 	reprobe.AddCSSClass("flat")
 	reprobe.SetTooltipText("Re-probe nodes")
 
+	continueBtn := gtk.NewButtonWithLabel("Continue")
+	continueBtn.AddCSSClass("suggested-action")
+
+	header := adw.NewHeaderBar()
+	header.SetTitleWidget(titleWidget)
+	headerActions := gtk.NewBox(gtk.OrientationHorizontal, 6)
+	headerActions.Append(reprobe)
+	headerActions.Append(continueBtn)
+	header.PackEnd(headerActions)
+	pageBox.Append(header)
+
+	// Pulsing progress bar in a bottom ActionBar — visible while probing,
+	// hidden when all results are in.
+	progressBar := gtk.NewProgressBar()
+	progressBar.SetHExpand(true)
+	progressBar.SetMarginStart(6)
+	progressBar.SetMarginEnd(6)
+	progressBar.Pulse()
+
+	actionBar := gtk.NewActionBar()
+	actionBar.SetCenterWidget(progressBar)
+
+	scroll := gtk.NewScrolledWindow()
+	scroll.SetVExpand(true)
+
+	prefPage := adw.NewPreferencesPage()
+	scroll.SetChild(prefPage)
+
+	toolbar := adw.NewToolbarView()
+	toolbar.SetContent(scroll)
+	toolbar.AddBottomBar(actionBar)
+	pageBox.Append(toolbar)
+
+	results := adw.NewPreferencesGroup()
+	prefPage.Add(results)
+
+	// pulse the progress bar on a ticker while the ActionBar is visible
+	var pulseStop context.CancelFunc
+	startPulse := func() context.CancelFunc {
+		ctx, cancel := context.WithCancel(w.ctx)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(80 * time.Millisecond):
+					glib.IdleAdd(func() { progressBar.Pulse() })
+				}
+			}
+		}()
+		return cancel
+	}
+
 	startProbe := func() {
 		reprobe.SetSensitive(false)
-		banner.SetTitle("Inspecting nodes…")
-		banner.SetRevealed(true)
-		page.Remove(results)
+		titleWidget.SetSubtitle("Inspecting nodes…")
+		actionBar.SetVisible(true)
+		if pulseStop != nil {
+			pulseStop()
+		}
+		pulseStop = startPulse()
+		prefPage.Remove(results)
 		results = adw.NewPreferencesGroup()
-		page.Add(results)
+		prefPage.Add(results)
 		draft := w.draft.Value()
 		if draft.Probes == nil {
 			draft.Probes = map[string]*core.NodeProbe{}
@@ -405,11 +469,14 @@ func (w *Wizard) probePage() *adw.NavigationPage {
 			rows[node.ID] = row
 			results.Add(row.row)
 		}
-		go w.runProbes(banner, rows, func() { reprobe.SetSensitive(true) })
+		go w.runProbes(titleWidget, actionBar, pulseStop, rows, func() {
+			reprobe.SetSensitive(true)
+			pulseStop = nil
+		})
 	}
 	reprobe.ConnectClicked(startProbe)
 
-	shell := w.pageShellWithHeaderActions("Probe", "Continue", body, func() {
+	continueBtn.ConnectClicked(func() {
 		d := w.draft.Value()
 		for _, n := range d.Nodes {
 			p, ok := d.Probes[n.ID]
@@ -423,13 +490,13 @@ func (w *Wizard) probePage() *adw.NavigationPage {
 			}
 		}
 		w.push(w.planPage())
-	}, reprobe)
+	})
 
 	startProbe()
-	return shell
+	return navPage
 }
 
-func (w *Wizard) runProbes(banner *adw.Banner, rows map[string]*probeRowState, done func()) {
+func (w *Wizard) runProbes(titleWidget *adw.WindowTitle, actionBar *gtk.ActionBar, pulseStop context.CancelFunc, rows map[string]*probeRowState, done func()) {
 	d := w.draft.Value()
 
 	type result struct {
@@ -493,8 +560,11 @@ func (w *Wizard) runProbes(banner *adw.Banner, rows map[string]*probeRowState, d
 	}
 
 	glib.IdleAdd(func() {
-		banner.SetTitle("Probe complete")
-		banner.SetRevealed(false)
+		if pulseStop != nil {
+			pulseStop()
+		}
+		actionBar.SetVisible(false)
+		titleWidget.SetSubtitle("")
 		if done != nil {
 			done()
 		}

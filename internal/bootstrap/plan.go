@@ -218,8 +218,79 @@ func serverJoinHost(srv Node, probe *NodeProbe) string {
 // installs. They are emitted in a deterministic order regardless of the
 // probe so the user always sees the full picture, but pre-skipped when
 // the probe shows they are unnecessary.
+// updateSystemCommand returns a shell snippet that upgrades all packages on
+// the detected distro. When the probe is available the correct package manager
+// is known ahead of time; when it is not, the snippet auto-detects at runtime.
+// All mainstream Linux distros are covered: apt (Debian/Ubuntu), dnf
+// (Fedora/RHEL/Rocky/AlmaLinux), yum (older RHEL/CentOS 7), zypper
+// (openSUSE/SLES), pacman (Arch/Manjaro), apk (Alpine).
+func updateSystemCommand(p *NodeProbe) string {
+	if p != nil && p.PkgManager != "" {
+		switch p.PkgManager {
+		case "apt":
+			return "DEBIAN_FRONTEND=noninteractive apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -q"
+		case "dnf":
+			return "dnf upgrade -y --refresh"
+		case "yum":
+			return "yum update -y"
+		case "zypper":
+			return "zypper --non-interactive refresh && zypper --non-interactive update"
+		case "pacman":
+			return "pacman -Syu --noconfirm"
+		case "apk":
+			return "apk update && apk upgrade"
+		}
+	}
+	// Runtime detection fallback.
+	return `if command -v apt-get >/dev/null 2>&1; then
+  DEBIAN_FRONTEND=noninteractive apt-get update -q && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y -q
+elif command -v dnf >/dev/null 2>&1; then
+  dnf upgrade -y --refresh
+elif command -v yum >/dev/null 2>&1; then
+  yum update -y
+elif command -v zypper >/dev/null 2>&1; then
+  zypper --non-interactive refresh && zypper --non-interactive update
+elif command -v pacman >/dev/null 2>&1; then
+  pacman -Syu --noconfirm
+elif command -v apk >/dev/null 2>&1; then
+  apk update && apk upgrade
+else
+  echo 'no recognised package manager found; skipping system update'
+fi`
+}
+
 func prepSteps(n Node, opts K3sOptions, p *NodeProbe, role NodeRole) []Step {
 	var s []Step
+
+	// Optional: update all system packages first.
+	updateStep := Step{
+		ID:           uid("update-system"),
+		Title:        "Update system packages",
+		Description:  "Upgrade all installed packages to the latest versions available in the distro repositories. This can take several minutes on a fresh node.",
+		Command:      updateSystemCommand(p),
+		RequiresRoot: true,
+		Effect:       EffectSystem,
+	}
+	if !opts.UpdateSystem {
+		updateStep.Skip = true
+		updateStep.SkipReason = "not requested"
+	}
+	s = append(s, updateStep)
+
+	// Optional: install Docker CE.
+	dockerStep := Step{
+		ID:           uid("install-docker"),
+		Title:        "Install Docker CE",
+		Description:  "Install Docker CE via the official get.docker.com convenience script. Works on Debian, Ubuntu, Fedora, RHEL, Rocky, AlmaLinux, and most other mainstream distributions.",
+		Command:      "curl -fsSL https://get.docker.com | sh",
+		RequiresRoot: true,
+		Effect:       EffectInstall,
+	}
+	if !opts.InstallDocker {
+		dockerStep.Skip = true
+		dockerStep.SkipReason = "not requested"
+	}
+	s = append(s, dockerStep)
 
 	// If a previous k3s installation was detected by the probe, run the
 	// official uninstall script first so we start from a clean slate.
