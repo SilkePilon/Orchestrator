@@ -141,7 +141,7 @@ func serverSteps(n Node, opts K3sOptions, p *NodeProbe) []Step {
 	s = append(s, Step{
 		ID:           uid("start-server"),
 		Title:        "Start k3s server",
-		Description:  "Start the k3s server service and show recent service logs if startup times out or fails.",
+		Description:  "Queue the k3s server service to start (non-blocking). An immediate crash is detected within 30 s; full API-server readiness is confirmed by the next step.",
 		Command:      startServiceCommand("k3s"),
 		RequiresRoot: true,
 		Effect:       EffectSystem,
@@ -199,7 +199,7 @@ func agentSteps(n Node, srv Node, opts K3sOptions, p *NodeProbe, joinHost string
 	s = append(s, Step{
 		ID:           uid("start-agent"),
 		Title:        "Start k3s agent",
-		Description:  "Start the k3s agent service and show recent service logs if it cannot join the server.",
+		Description:  "Queue the k3s agent service to start (non-blocking). An immediate crash is detected within 30 s.",
 		Command:      startServiceCommand("k3s-agent"),
 		RequiresRoot: true,
 		Effect:       EffectSystem,
@@ -514,18 +514,31 @@ func installCommand(opts K3sOptions, role NodeRole, k3sURL, token string) string
 }
 
 func startServiceCommand(unit string) string {
-	quotedUnit := shellQuote(unit)
-	// Stop any pre-existing instance (e.g. from a previous bootstrap run
-	// that was aborted) and clear failed state before starting fresh.
-	// This prevents `systemctl start` from waiting 5 minutes on a stuck
-	// activating unit that will never become active.
-	return fmt.Sprintf("systemctl stop %s 2>/dev/null || true; systemctl reset-failed %s 2>/dev/null || true; timeout 5m systemctl start %s || { code=$?; echo %s; systemctl status %s --no-pager || true; journalctl -u %s -n 120 --no-pager || true; exit $code; }",
-		quotedUnit,
-		quotedUnit,
-		quotedUnit,
-		shellQuote("service failed to start within 5 minutes; recent logs follow"),
-		quotedUnit,
-		quotedUnit)
+	q := shellQuote(unit)
+	// k3s (and k3s-agent) are installed as Type=notify with TimeoutStartSec=0,
+	// meaning plain `systemctl start` blocks INDEFINITELY waiting for the
+	// service to send sd_notify(READY=1). On first boot this can take well
+	// over 5 minutes (containerd init, pause-image pull, embedded-etcd init,
+	// CNI setup). Using `--no-block` queues the start and returns immediately,
+	// avoiding that hang. We then poll for up to 30 s to catch an immediate
+	// crash (failed state). Full readiness is verified by the separate
+	// "wait-ready" step that polls `k3s kubectl get nodes`.
+	return fmt.Sprintf(
+		"systemctl stop %[1]s 2>/dev/null || true; "+
+			"systemctl reset-failed %[1]s 2>/dev/null || true; "+
+			"systemctl daemon-reload 2>/dev/null || true; "+
+			"systemctl start --no-block %[1]s || { echo 'failed to queue %[1]s start'; exit 1; }; "+
+			"for i in $(seq 1 6); do "+
+			"st=$(systemctl is-active %[1]s 2>/dev/null || echo unknown); "+
+			"case \"$st\" in "+
+			"active) echo '%[1]s is active'; break;; "+
+			"failed) echo %[2]s; systemctl status %[1]s --no-pager || true; journalctl -u %[1]s -n 120 --no-pager || true; exit 1;; "+
+			"*) sleep 5;; "+
+			"esac; "+
+			"done",
+		q,
+		shellQuote("service failed immediately after start; recent logs follow"),
+	)
 }
 
 func serverConfigYAML(n Node, opts K3sOptions, p *NodeProbe) string {
