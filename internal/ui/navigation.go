@@ -102,6 +102,7 @@ func NewNavigation(ctx context.Context, state *common.ClusterState, viewStack *g
 	windowSection.Append("Disconnect", "win.disconnect")
 
 	prefSection := gio.NewMenu()
+	prefSection.Append("Notifications", "win.notifications")
 	prefSection.Append("Preferences", "win.prefs")
 	// prefSection.Append("Keyboard Shortcuts", "win.shortcuts")
 	prefSection.Append("About", "win.about")

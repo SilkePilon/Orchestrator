@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/SilkePilon/Orchestrator/api"
-	"github.com/SilkePilon/Orchestrator/widget"
 	"github.com/diamondburned/gotk4/pkg/glib/v2"
 	"github.com/diamondburned/gotk4/pkg/gtk/v4"
 	appsv1 "k8s.io/api/apps/v1"
@@ -22,9 +21,23 @@ import (
 
 type PortForwarder struct {
 	*api.Cluster
+	// clusterCtx is the cluster-level context.  It is used for the actual port
+	// forward goroutine so that forwarding survives sheet / dialog close events
+	// and only stops when the cluster disconnects or the user explicitly stops it.
+	clusterCtx       context.Context
 	forwarders       map[types.NamespacedName]*portforward.PortForwarder
 	deploymentByPod  map[types.NamespacedName]types.NamespacedName
 	podsByDeployment map[types.NamespacedName]map[types.NamespacedName]struct{}
+	// buttonHandles tracks the most-recent click signal handle for each button
+	// so UpdateButton can disconnect the old one before registering a new one.
+	buttonHandles map[*gtk.Button]glib.SignalHandle
+}
+
+// ActiveForward describes a single active port-forward session.
+type ActiveForward struct {
+	Pod        types.NamespacedName
+	LocalPort  uint16
+	RemotePort uint16
 }
 
 // portForwarders is a small process-wide registry that lets other extensions
@@ -33,15 +46,37 @@ type PortForwarder struct {
 // Core extension's internals.
 var portForwarders = map[*api.Cluster]*PortForwarder{}
 
-func NewPortForwarder(cluster *api.Cluster) *PortForwarder {
+func NewPortForwarder(ctx context.Context, cluster *api.Cluster) *PortForwarder {
 	p := &PortForwarder{
 		Cluster:          cluster,
+		clusterCtx:       ctx,
 		forwarders:       map[types.NamespacedName]*portforward.PortForwarder{},
 		deploymentByPod:  map[types.NamespacedName]types.NamespacedName{},
 		podsByDeployment: map[types.NamespacedName]map[types.NamespacedName]struct{}{},
+		buttonHandles:    map[*gtk.Button]glib.SignalHandle{},
 	}
 	portForwarders[cluster] = p
 	return p
+}
+
+// ActiveForwards returns a snapshot of all currently active port-forward sessions
+// for this cluster.
+func (p *PortForwarder) ActiveForwards() []ActiveForward {
+	var result []ActiveForward
+	for pod, fwd := range p.forwarders {
+		ports, err := fwd.GetPorts()
+		if err != nil {
+			continue
+		}
+		for _, fp := range ports {
+			result = append(result, ActiveForward{
+				Pod:        pod,
+				LocalPort:  fp.Local,
+				RemotePort: fp.Remote,
+			})
+		}
+	}
+	return result
 }
 
 // PortForwarderFor returns the active PortForwarder for the given cluster, or
@@ -178,33 +213,43 @@ func (p *PortForwarder) resolveDeployment(ctx context.Context, podName types.Nam
 }
 
 func (p *PortForwarder) UpdateButton(ctx context.Context, btn *gtk.Button, name types.NamespacedName, ports []string) {
+	// Disconnect any previously installed click handler so we never accumulate
+	// duplicates when UpdateButton is called several times on the same widget.
+	if prev, ok := p.buttonHandles[btn]; ok && prev != 0 {
+		btn.HandlerDisconnect(prev)
+	}
+
 	var handle glib.SignalHandle
+
 	if fwd, err := p.GetPorts(name); err != nil {
+		// No active forward — show the setup icon.
+		btn.SetChild(nil)
 		btn.SetIconName("vertical-arrows-long-symbolic")
 		btn.SetTooltipText("Forward port to localhost")
 		btn.AddCSSClass("flat")
 		handle = btn.ConnectClicked(func() {
-			if err := p.New(ctx, name, ports); err != nil {
-				widget.ShowErrorDialog(ctx, "Port forward error", err)
-			} else {
-				p.UpdateButton(ctx, btn, name, ports)
-			}
+			delete(p.buttonHandles, btn)
 			btn.HandlerDisconnect(handle)
+			p.showPortForwardDialog(ctx, btn, name, ports, func() {
+				p.UpdateButton(ctx, btn, name, ports)
+			})
 		})
 	} else {
+		// Active forward — show the local port badge.
 		box := gtk.NewBox(gtk.OrientationHorizontal, 2)
-		icon := gtk.NewImageFromIconName("cross-small-symbolic")
-		icon.AddCSSClass("error")
+		icon := gtk.NewImageFromIconName("network-transmit-receive-symbolic")
+		icon.AddCSSClass("accent")
 		box.Append(icon)
 		box.Append(gtk.NewLabel(fmt.Sprintf("%d", fwd[0].Local)))
 		btn.SetChild(box)
 		btn.RemoveCSSClass("flat")
-		btn.SetTooltipText("Close forwarding port")
+		btn.SetTooltipText(fmt.Sprintf("Forwarding :%d → localhost:%d — click to stop", fwd[0].Remote, fwd[0].Local))
 		handle = btn.ConnectClicked(func() {
-			p.Close(name)
-			p.UpdateButton(ctx, btn, name, ports)
+			delete(p.buttonHandles, btn)
 			btn.HandlerDisconnect(handle)
+			p.showStopForwardDialog(ctx, btn, name, fwd[0].Local, fwd[0].Remote, ports)
 		})
 	}
 
+	p.buttonHandles[btn] = handle
 }

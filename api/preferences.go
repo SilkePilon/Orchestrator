@@ -61,6 +61,76 @@ type ClusterPreferences struct {
 	// Orchestrator k3s bootstrap wizard. It is purely informational; the
 	// connection details live in Host/TLS/BearerToken.
 	Bootstrap *BootstrapRecord `json:",omitempty"`
+
+	// Notifications controls which events generate desktop notifications for
+	// this cluster. Defaults are applied by Defaults() on first load.
+	Notifications NotificationPreferences
+}
+
+// NotificationPreferences controls which cluster events generate desktop
+// notifications. All fields are per-cluster. Changes take effect immediately.
+type NotificationPreferences struct {
+	Enabled bool
+
+	// Workloads
+	PodFailures         bool
+	PodCrashLoops       bool
+	ContainerRestarts   bool // notify when a container restart count increases
+	NewPod              bool // notify when a pod is newly scheduled
+	DeploymentRollouts  bool
+	NewDeployment       bool // notify when a new Deployment/StatefulSet/DaemonSet is created
+	JobFailures         bool
+	JobCompleted        bool // notify when a job succeeds
+
+	// Cluster health
+	NodeNotReady bool
+	NewNode      bool // notify when a new node joins
+	PVCPending   bool
+	ConfigChange bool // notify when a ConfigMap or Secret is updated
+	NewNamespace bool // notify when a namespace is created
+	NewIngress   bool // notify when an Ingress is created
+
+	// Argo CD (only effective when Argo CD is detected on the cluster)
+	ArgoAppOutOfSync bool
+	ArgoAppDegraded  bool
+
+	// Flux CD (only effective when Flux CD is detected on the cluster)
+	FluxKustomizationFailed bool
+	FluxHelmReleaseFailed   bool
+	FluxSourceNotReady      bool
+
+	// Advanced
+	ExcludedNamespaces []string
+	ExcludedResources  []string // "namespace/name" exact matches
+	CooldownSeconds    int
+}
+
+// DefaultNotificationPreferences returns sensible defaults with the most
+// actionable events enabled out of the box.
+func DefaultNotificationPreferences() NotificationPreferences {
+	return NotificationPreferences{
+		Enabled:                 true,
+		PodFailures:             true,
+		PodCrashLoops:           true,
+		ContainerRestarts:       true,
+		NewPod:                  false,
+		DeploymentRollouts:      true,
+		NewDeployment:           true,
+		JobFailures:             true,
+		JobCompleted:            false,
+		NodeNotReady:            true,
+		NewNode:                 true,
+		PVCPending:              false,
+		ConfigChange:            false,
+		NewNamespace:            false,
+		NewIngress:              false,
+		ArgoAppOutOfSync:        true,
+		ArgoAppDegraded:         true,
+		FluxKustomizationFailed: true,
+		FluxHelmReleaseFailed:   true,
+		FluxSourceNotReady:      false,
+		CooldownSeconds:         300,
+	}
 }
 
 // BootstrapRecord is metadata about a cluster Orchestrator bootstrapped itself.
@@ -209,6 +279,11 @@ func (c *basePreferences) Defaults() {
 }
 
 func (c *ClusterPreferences) Defaults() {
+	// CooldownSeconds == 0 means the struct was never initialised (default is 300).
+	if c.Notifications.CooldownSeconds == 0 {
+		c.Notifications = DefaultNotificationPreferences()
+	}
+
 	if len(c.Navigation.Favourites) == 0 {
 		c.Navigation.Favourites = []schema.GroupVersionResource{
 			{

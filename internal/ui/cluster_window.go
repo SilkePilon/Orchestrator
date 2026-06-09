@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"strings"
+
 	"github.com/SilkePilon/Orchestrator/api"
+	"github.com/SilkePilon/Orchestrator/extension"
 	"github.com/SilkePilon/Orchestrator/internal/ctxt"
+	"github.com/SilkePilon/Orchestrator/internal/notifications"
 	"github.com/SilkePilon/Orchestrator/internal/ui/common"
 	"github.com/SilkePilon/Orchestrator/internal/ui/editor"
 	"github.com/SilkePilon/Orchestrator/internal/ui/gitops"
@@ -59,6 +63,31 @@ func NewClusterWindow(ctx context.Context, app *gtk.Application, state *common.C
 			return true
 		}
 		app := w.Application()
+
+		// Warn the user if there are active port-forward sessions.
+		if pf := extension.PortForwarderFor(w.Cluster); pf != nil {
+			if active := pf.ActiveForwards(); len(active) > 0 {
+				var lines []string
+				for _, af := range active {
+					lines = append(lines, fmt.Sprintf("• %s  (localhost:%d → port %d)", af.Pod.Name, af.LocalPort, af.RemotePort))
+				}
+				body := "The following port forwards are still active and will be stopped:\n\n" + strings.Join(lines, "\n")
+				warnDlg := adw.NewAlertDialog("Active Port Forwards", body)
+				warnDlg.AddResponse("cancel", "Cancel")
+				warnDlg.AddResponse("continue", "Close Anyway")
+				warnDlg.SetResponseAppearance("continue", adw.ResponseDestructive)
+				warnDlg.SetDefaultResponse("cancel")
+				warnDlg.ConnectResponse(func(response string) {
+					if response == "continue" {
+						w.HandlerDisconnect(h)
+						w.Close()
+					}
+				})
+				warnDlg.Present(&w.Window)
+				return true
+			}
+		}
+
 		if !isLastVisibleWindow(app) {
 			return false
 		}
@@ -149,6 +178,11 @@ func NewClusterWindow(ctx context.Context, app *gtk.Application, state *common.C
 	paned.SetEndChild(viewStack)
 
 	w.createActions()
+
+	// Start the notification dispatcher for this cluster.
+	disp := notifications.New(app, w.Cluster.ClusterPreferences)
+	disp.Start(ctx, w.Cluster)
+
 	return &w
 }
 
@@ -186,6 +220,13 @@ func (w *ClusterWindow) createActions() {
 	action = gio.NewSimpleAction("about", nil)
 	action.ConnectActivate(func(_ *glib.Variant) {
 		NewAboutWindow().Present(&w.Window)
+	})
+	w.AddAction(action)
+
+	action = gio.NewSimpleAction("notifications", nil)
+	action.ConnectActivate(func(_ *glib.Variant) {
+		dlg := NewNotificationsDialog(w.ctx, w.Cluster.ClusterPreferences, w.Cluster.Client)
+		dlg.Present(&w.Window)
 	})
 	w.AddAction(action)
 

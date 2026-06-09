@@ -32,10 +32,10 @@ func init() {
 	Extensions = append(Extensions, NewCore)
 }
 
-func NewCore(_ context.Context, cluster *api.Cluster) (Extension, error) {
+func NewCore(ctx context.Context, cluster *api.Cluster) (Extension, error) {
 	return &Core{
 		Cluster:     cluster,
-		portforward: NewPortForwarder(cluster),
+		portforward: NewPortForwarder(ctx, cluster),
 	}, nil
 }
 
