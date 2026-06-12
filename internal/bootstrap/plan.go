@@ -52,6 +52,57 @@ func BuildPlan(d *BootstrapDraft) (*Plan, error) {
 	return plan, nil
 }
 
+// BuildAddNodePlan returns a plan for joining a new agent node to an already-
+// running cluster. The server node is only used to read the cluster's
+// node-token; no install steps are emitted for it. All listed agent nodes
+// receive the full agentSteps sequence.
+func BuildAddNodePlan(d *BootstrapDraft) (*Plan, error) {
+	if d == nil {
+		return nil, fmt.Errorf("nil draft")
+	}
+	srv := d.Server()
+	if srv == nil {
+		return nil, fmt.Errorf("no server node defined")
+	}
+	if srv.Host == "" {
+		return nil, fmt.Errorf("server node has no host")
+	}
+	agents := d.Agents()
+	if len(agents) == 0 {
+		return nil, fmt.Errorf("no agent node defined")
+	}
+
+	plan := &Plan{
+		Options:   d.Options,
+		NodeSteps: map[string][]Step{},
+	}
+	plan.NodeOrder = append(plan.NodeOrder, srv.ID)
+	for _, a := range agents {
+		plan.NodeOrder = append(plan.NodeOrder, a.ID)
+	}
+
+	// Server: only read the node-token. The executor captures this step's
+	// output and substitutes TokenPlaceholder in the agent install command.
+	plan.NodeSteps[srv.ID] = []Step{
+		{
+			ID:           uid("read-token"),
+			Title:        "Read the cluster node-token",
+			Description:  "Fetch the join token from the running server. The server itself will not be modified.",
+			Command:      "cat /var/lib/rancher/k3s/server/node-token",
+			RequiresRoot: true,
+			Effect:       EffectReadOnly,
+		},
+	}
+
+	// New agent(s): full agent install sequence.
+	serverProbe := probeOf(d, srv.ID)
+	for _, a := range agents {
+		plan.NodeSteps[a.ID] = agentSteps(*a, *srv, d.Options, probeOf(d, a.ID), serverJoinHost(*srv, serverProbe))
+	}
+
+	return plan, nil
+}
+
 // BuildUninstallPlan returns a destructive cleanup plan that removes k3s and
 // the files Orchestrator created while bootstrapping. Agents are cleaned before the
 // server so the control-plane node is available for as long as possible.

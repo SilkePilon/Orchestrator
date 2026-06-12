@@ -220,6 +220,25 @@ func LoadPreferences() (*Preferences, error) {
 	}
 	base.Defaults()
 
+	// Deduplicate clusters that were already saved to disk with the same host.
+	// This can happen when the kubeconfig scanner previously added duplicates
+	// (the old check skipped bootstrapped clusters because Kubeconfig == nil).
+	seen := map[string]bool{}
+	deduped := base.Clusters[:0]
+	for _, c := range base.Clusters {
+		key := c.Host
+		if key == "" && c.Kubeconfig != nil {
+			key = c.Kubeconfig.Path + "|" + c.Kubeconfig.Context
+		}
+		if key == "" || !seen[key] {
+			if key != "" {
+				seen[key] = true
+			}
+			deduped = append(deduped, c)
+		}
+	}
+	base.Clusters = deduped
+
 	for i := len(base.Clusters) - 1; i >= 0; i-- {
 		config := base.Clusters[i].Kubeconfig
 		if config == nil {
@@ -247,16 +266,24 @@ func LoadPreferences() (*Preferences, error) {
 
 	context:
 		for context := range config.Contexts {
+			candidate := ClusterPreferences{Kubeconfig: &Kubeconfig{Path: path, Context: context}}
+			candidate.Defaults()
+			if err := UpdateClusterPreferences(&candidate, path, context); err != nil {
+				continue context
+			}
 			for _, c := range base.Clusters {
+				// Skip if we already have an entry for the exact same file+context.
 				if c.Kubeconfig != nil && c.Kubeconfig.Path == path && c.Kubeconfig.Context == context {
 					continue context
 				}
+				// Skip if any existing cluster (kubeconfig or bootstrapped) already
+				// resolves to the same API server host — prevents duplicates when the
+				// same cluster is referenced from multiple kubeconfig files or paths.
+				if c.Host != "" && c.Host == candidate.Host {
+					continue context
+				}
 			}
-			prefs := ClusterPreferences{Kubeconfig: &Kubeconfig{Path: path, Context: context}}
-			prefs.Defaults()
-			if err := UpdateClusterPreferences(&prefs, path, context); err == nil {
-				base.Clusters = append(base.Clusters, prefs)
-			}
+			base.Clusters = append(base.Clusters, candidate)
 		}
 
 	}

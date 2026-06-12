@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/SilkePilon/Orchestrator/api"
+	core "github.com/SilkePilon/Orchestrator/internal/bootstrap"
 	"github.com/SilkePilon/Orchestrator/internal/ctxt"
 	"github.com/SilkePilon/Orchestrator/internal/pubsub"
 	uibootstrap "github.com/SilkePilon/Orchestrator/internal/ui/bootstrap"
@@ -197,6 +198,33 @@ func (p *ClusterPrefPage) createActions() *adw.PreferencesGroup {
 
 	if util.Index(p.Preferences.Value().Clusters, p.prefs) >= 0 {
 		if p.prefs.Value().Bootstrap != nil {
+			addNode := adw.NewActionRow()
+			addNode.SetActivatable(true)
+			addNode.AddSuffix(gtk.NewImageFromIconName("go-next-symbolic"))
+			addNode.SetTitle("Add node")
+			addNode.SetSubtitle("Join a new agent node to this bootstrapped cluster")
+			addNode.ConnectActivated(func() {
+				wizard := uibootstrap.NewAddNodeWizard(p.ctx, p.State, p.prefs.Value(), func(newNode core.Node) {
+					cluster := p.prefs.Value()
+					if cluster.Bootstrap != nil {
+						cluster.Bootstrap.AgentHosts = append(cluster.Bootstrap.AgentHosts, newNode.Host)
+						cluster.Bootstrap.Nodes = append(cluster.Bootstrap.Nodes, api.BootstrapNodeRecord{
+							Role:           string(newNode.Role),
+							Host:           newNode.Host,
+							Port:           newNode.Port,
+							User:           newNode.User,
+							Auth:           string(newNode.Auth),
+							PrivateKeyPath: newNode.PrivateKeyPath,
+							Become:         string(newNode.Become),
+							Label:          newNode.Label,
+						})
+						p.prefs.Pub(cluster)
+					}
+				})
+				p.Parent().(*adw.NavigationView).Push(wizard.NavigationPage)
+			})
+			group.Add(addNode)
+
 			uninstall := adw.NewActionRow()
 			uninstall.SetActivatable(true)
 			uninstall.AddSuffix(gtk.NewImageFromIconName("go-next-symbolic"))
