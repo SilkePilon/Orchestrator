@@ -74,6 +74,7 @@ modules:
         GOPROXY: file:///run/build/orchestrator/go/pkg/mod/cache/download
         GOSUMDB: 'off'
         CGO_ENABLED: '1'
+        GOFLAGS: '-modcacherw'
     build-commands:
       - glib-compile-resources --sourcedir=internal/icon --target=internal/icon/icon.gresource internal/icon/gresource.xml
       - export PATH="/app/lib/sdk/golang/bin:$PATH" && go build -trimpath -mod=mod -ldflags='-s -w -X main.version=0.1.3' -o orchestrator .
