@@ -1,206 +1,110 @@
-# Orchestrator
+<p align="center"><img src="internal/icon/orchestrator.svg" width="128"></p>
+<h1 align="center">Orchestrator</h1>
 
-Orchestrator is a Kubernetes IDE designed for the GNOME desktop. Explore and
-manage your clusters with a simple and intuitive interface. Equipped with
-essential features such as a terminal for executing commands, monitoring through
-logs and metrics, and a resource editor that conveniently places the API
-reference at your fingertips.
+<p align="center">A Kubernetes IDE designed for the GNOME desktop. Explore and manage your clusters with a simple and intuitive interface, equipped with a terminal, live logs, metrics, and an inline API reference.</p>
 
-![Screenshot](https://silkepilon.github.io/Orchestrator/images/screenshot.png)
+<p align="center"><a href='https://flathub.org/apps/dev.silkepilon.Orchestrator'><img width='190' alt='Download on Flathub' src='https://flathub.org/api/badge?locale=en'/></a></p>
 
-## Download
-
-Downloads for all platforms are available under
-[releases](https://github.com/SilkePilon/Orchestrator/releases). On Linux, we
-recommend using the Flatpak package.
-
-[![Download on Flathub](https://flathub.org/api/badge?locale=en)](https://flathub.org/apps/dev.silkepilon.Orchestrator)
+---
 
 ## Features
 
-### Cluster Management
-
-- **Auto-discovery**: automatically detects kubeconfig files at `~/.kube/config`
-  and any paths in `$KUBECONFIG`
-- **Multiple clusters**: connect to and switch between multiple clusters from
-  the welcome screen
-- **Manual configuration**: configure clusters by host URL, bearer token, TLS
-  certificates, or exec-based auth
-- **Bootstrap new clusters**: install a fresh **k3s** cluster on remote
-  SSH-reachable nodes through a guided wizard. Detects distro/package
-  manager/firewall, generates an editable plan of every shell command that will
-  run, streams live logs per node, and registers the resulting cluster in
-  Orchestrator preferences on success.
-- **Read-only mode**: optionally prevent any write operations against a cluster
-- **Keyboard shortcuts**: `Ctrl+N` opens a new window, `Ctrl+Q` disconnects from
-  the current cluster
-
-### Resource Browser
-
-- **Full API coverage**: browse every resource type the cluster API exposes,
-  including CRDs
-- **Favourites**: pin frequently-used resource types to the sidebar for quick
-  access (defaults: Pods, ConfigMaps, Secrets, PVCs, Deployments, StatefulSets,
-  Services, Ingresses, Namespaces, Nodes)
-- **Pinned objects**: pin individual objects to the sidebar to keep them a click
-  away
-- **Namespace filter**: scope the resource list to one or all namespaces
-- **Search**: filter resources by name in real time
-
-### Resource Details
-
-Clicking any resource opens a detail panel with rich, resource-specific
-properties:
-
-| Resource                                  | Extra detail shown                                                                                                                             |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Pod**                                   | Per-container state, restart count, image, command, env vars (resolved from ConfigMaps/Secrets), ports, CPU & memory usage vs. requests/limits |
-| **Deployment / ReplicaSet / StatefulSet** | Linked pod list with status icons; StatefulSets also show volume claim templates                                                               |
-| **Node**                                  | Architecture, container runtime, kernel, kubelet version, OS image, allocatable CPU & memory, pod list                                         |
-| **Service**                               | Cluster IP, port list                                                                                                                          |
-| **ConfigMap / Secret**                    | Key–value data                                                                                                                                 |
-| **PersistentVolumeClaim**                 | Storage class, capacity request, access modes, linked PV                                                                                       |
-| **PersistentVolume**                      | Storage class, capacity, access modes, reclaim policy, phase, linked claim                                                                     |
-
-### Metrics
-
-- CPU and memory usage bars are shown inline in the **Pods** and **Nodes** list
-  columns (requires metrics-server)
-- Per-container CPU and memory usage with requests and limits are shown in the
-  pod detail panel
-
-### Logs
-
-- Stream live container logs directly from the resource detail panel
-- Each container has a dedicated **Logs** navigation page
-
-### Terminal (exec)
-
-- Open an interactive shell (`/bin/sh`) inside any container from its detail
-  panel
-- Full VTE-based terminal emulator embedded in the UI (Linux only)
-
-### Port Forwarding
-
-- Forward any container port to `localhost` with a single click from the pod
-  detail panel
-- Active forwards show the local port; click again to stop
-
-### Resource Editor
-
-- Edit any resource as YAML with syntax highlighting (GtkSourceView 5)
-- Inline Kubernetes API reference available while editing
+- Auto-discovery of kubeconfig files at `~/.kube/config` and `$KUBECONFIG`
+- Connect to and switch between multiple clusters
+- Manual cluster configuration via host URL, bearer token, TLS certificates, or
+  exec-based auth
+- Bootstrap a fresh k3s cluster on remote SSH-reachable nodes through a guided
+  wizard
+- Browse every resource type the cluster API exposes, including CRDs
+- Pin frequently-used resource types and individual objects to the sidebar
+- Filter resources by namespace and search by name in real time
+- Rich resource detail panels with per-resource properties and inline metrics
+- Stream live container logs from any resource detail panel
+- Interactive shell inside any container via a full VTE-based terminal emulator
+- Forward container ports to `localhost` with a single click
+- Edit any resource as YAML with syntax highlighting and an inline API reference
 - Create new resources directly from the editor
+- Read-only mode to prevent accidental write operations
+- Update notifications and a crash window that catches unhandled errors
 
-### Preferences
+## Screenies
 
-- **Color scheme**: choose Default, Light, or Dark
-- **Cluster settings**: add, remove, or reconfigure clusters at any time
-- Preferences are saved automatically to
-  `$XDG_CONFIG_HOME/orchestrator/prefs.json`
+|                 Welcome                  |                Main                |           Bootstrap Probe            |                Apply                 |
+| :--------------------------------------: | :--------------------------------: | :----------------------------------: | :----------------------------------: |
+| ![welcome](data/screenshots/welcome.png) | ![main](data/screenshots/main.png) | ![probe](data/screenshots/probe.png) | ![apply](data/screenshots/apply.png) |
 
-### Other
+## Dependencies
 
-- Update notifications: a toast appears when a new release is available
-- Crash/panic window catches unhandled errors and displays them gracefully
+The following dependencies are required to build from source.
 
-## Setup
+- `golang`
+- `gtk4`
+- `libadwaita-1`
+- `gtksourceview-5`
+- `gobject-introspection`
+- `glib-2.0`
+- `vte-2.91-gtk4` (Linux only, required for the terminal)
 
-### Prerequisites
+## Install
 
-Orchestrator connects to Kubernetes clusters using standard kubeconfig files.
-Make sure you have a valid kubeconfig at `~/.kube/config` or exported in
-`$KUBECONFIG` before launching. Orchestrator will detect all contexts
-automatically.
+### Linux (Flatpak)
 
-To see CPU and memory metrics, your cluster must have
-[metrics-server](https://github.com/kubernetes-sigs/metrics-server) installed.
+Most Linux distributions come with Flatpak preinstalled, make sure your device
+has [the Flathub repo enabled](https://flathub.org/en/setup).
 
-### First Launch
+```sh
+flatpak install flathub dev.silkepilon.Orchestrator
+```
 
-1. Launch Orchestrator. The welcome screen lists all clusters found in your
-   kubeconfig.
-2. Click a cluster to connect. A spinner indicates the connection attempt.
-3. Once connected, the main window opens with the resource sidebar on the left.
-4. Use the sidebar to navigate resource types. Click any row to open its detail
-   panel.
+### Other platforms
 
-### Adding a Cluster Manually
+Downloads for all platforms are available under
+[releases](https://github.com/SilkePilon/Orchestrator/releases).
 
-1. Open **Preferences** (hamburger menu → Preferences, or the gear icon).
-2. In the **Clusters** group, click the **+** button.
-3. Fill in the cluster name, host URL, and authentication details (bearer token,
-   TLS certificates, or an exec provider).
-4. Save and return to the welcome screen to connect.
+## Build
 
-## Building From Source
+### Linux / macOS
 
-### Dependencies
+#### 1. Install dependencies
 
-#### Fedora
+##### Fedora
 
 ```sh
 sudo dnf install gtk4-devel gtksourceview5-devel libadwaita-devel gobject-introspection-devel glib2-devel vte291-gtk4-devel golang
 ```
 
-#### Debian / Ubuntu
+##### Debian / Ubuntu
 
 ```sh
 sudo apt install libgtk-4-dev libgtksourceview-5-dev libadwaita-1-dev libgirepository1.0-dev libglib2.0-dev-bin libvte-2.91-gtk4-dev golang-go
 ```
 
-### Build
+##### macOS (Homebrew)
 
-Generate the embedded icon resource file, then build:
+```sh
+brew install go gtk4 libadwaita gtksourceview5 gobject-introspection glib
+```
+
+#### 2. Build and run
 
 ```sh
 go generate ./...
 go build
-```
-
-Run directly without installing:
-
-```sh
 go run .
 ```
 
-### Flatpak Packaging
-
-The Flathub manifest lives at `dev.silkepilon.Orchestrator.yml`. Validate the
-desktop and AppStream metadata before submitting updates:
-
-```sh
-make flatpak-validate
-```
-
-Build or install the Flatpak locally when `flatpak-builder` is available:
+### Flatpak
 
 ```sh
 make flatpak-build
 make flatpak-install
 ```
 
-The manifest tracks Go dependencies in `flatpak-go-sources.json` so the Flathub
-builder can run without network access during the build.
+Validate the desktop and AppStream metadata before submitting updates:
 
-## Reporting Issues
-
-If you experience problems, please open an
-[issue](https://github.com/SilkePilon/Orchestrator/issues). Try to include as
-much information as possible, such as version, operating system and reproduction
-steps.
-
-For feature suggestions, please create a
-[discussion](https://github.com/SilkePilon/Orchestrator/discussions). If you
-have a concrete vision for the feature, open an issue instead and use the
-proposal template.
-
-## License
-
-Orchestrator is available under the terms of the Mozilla Public License v2, a
-copy of the license is distributed in the LICENSE file.
-
-Note: This is paid software with an unlimited free trial.
+```sh
+make flatpak-validate
+```
 
 ## Credits
 
@@ -210,3 +114,8 @@ the GNOME desktop. Seabird proved that a clean, native Linux Kubernetes client
 was both possible and desirable. Orchestrator started as a personal fork because
 the original project was great but lacked a way to quickly spin up a fresh
 cluster — the built-in k3s bootstrap wizard fills that gap.
+
+## License
+
+Orchestrator is available under the terms of the Mozilla Public License v2. A
+copy of the license is distributed in the LICENSE file.
